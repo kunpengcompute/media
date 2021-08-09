@@ -6,6 +6,7 @@
 #include "MediaLog.h"
 #include <cstring>
 #include <string>
+#include <cstdarg>
 #ifdef __ANDROID__
 #include <unordered_map>
 #include <android/log.h>

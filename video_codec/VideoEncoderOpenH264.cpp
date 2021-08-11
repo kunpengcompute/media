@@ -18,7 +18,8 @@ namespace {
     constexpr uint32_t FRAMERATE_MAX = 60;
     constexpr uint32_t BITRATE_MIN = 1000000;
     constexpr uint32_t BITRATE_MAX = 10000000;
-    constexpr uint32_t GOP_SIZE_DEFAULT = 300;
+    constexpr uint32_t GOPSIZE_MIN = 30;
+    constexpr uint32_t GOPSIZE_MAX = 3000;
 
     const std::string SHARED_LIB_NAME = "libopenh264.so";
     const std::string WELS_CREATE_SVC_ENCODER = "WelsCreateSVCEncoder";
@@ -39,12 +40,13 @@ VideoEncoderOpenH264::~VideoEncoderOpenH264()
     INFO("VideoEncoderOpenH264 destructor");
 }
 
-EncoderRetCode VideoEncoderOpenH264::InitEncoder(const EncoderParams &encParams)
+EncoderRetCode VideoEncoderOpenH264::InitEncoder(const EncodeParams &encParams)
 {
-    if (!VerifyEncodeParam(encParams)) {
+    if (!VerifyEncodeParams(encParams)) {
         ERR("init encoder failed: encoder params is not supported");
         return VIDEO_ENCODER_INIT_FAIL;
     }
+    m_encParams = encParams;
     if (!LoadOpenH264SharedLib()) {
         ERR("init encoder failed: load openh264 shared lib failed");
         return VIDEO_ENCODER_INIT_FAIL;
@@ -54,11 +56,11 @@ EncoderRetCode VideoEncoderOpenH264::InitEncoder(const EncoderParams &encParams)
         ERR("init encoder failed: create encoder failed, rc = %d", rc);
         return VIDEO_ENCODER_INIT_FAIL;
     }
-    m_frameSize = encParams.width * encParams.height * PRIMARY_COLOURS / COMPRESS_RATIO;
+    m_frameSize = m_encParams.width * m_encParams.height * PRIMARY_COLOURS / COMPRESS_RATIO;
     (void) memset(&m_paramExt, 0, sizeof(SEncParamExt));
     (void) memset(&m_srcPic, 0, sizeof(SSourcePicture));
     (void) memset(&m_frameBSInfo, 0, sizeof(SFrameBSInfo));
-    if (!InitParams(encParams)) {
+    if (!InitParams()) {
         ERR("init encoder failed: init params failed");
         return VIDEO_ENCODER_INIT_FAIL;
     }
@@ -66,7 +68,7 @@ EncoderRetCode VideoEncoderOpenH264::InitEncoder(const EncoderParams &encParams)
     return VIDEO_ENCODER_SUCCESS;
 }
 
-bool VideoEncoderOpenH264::VerifyEncodeParam(const EncoderParams &encParams)
+bool VideoEncoderOpenH264::VerifyEncodeParams(const EncodeParams &encParams)
 {
     if (encParams.width > WH_MAX || encParams.height > WH_MAX ||
         encParams.width < WH_MIN || encParams.height < WH_MIN) {
@@ -81,6 +83,18 @@ bool VideoEncoderOpenH264::VerifyEncodeParam(const EncoderParams &encParams)
         ERR("bitrate [%u] is not supported", encParams.bitrate);
         return false;
     }
+    if (encParams.gopSize < GOPSIZE_MIN && encParams.gopSize > GOPSIZE_MAX) {
+        ERR("gopsize [%u] is not supported", encParams.gopSize);
+        return false;
+    }
+    if (encParams.profile != ENCODE_PROFILE_BASELINE &&
+        encParams.profile != ENCODE_PROFILE_MAIN &&
+        encParams.profile != ENCODE_PROFILE_HIGH) {
+        ERR("profile [%u] is not supported", encParams.profile);
+        return false;
+    }
+    INFO("width:%u, height:%u, framerate:%u, bitrate:%u, gopsize:%u, profile:%u", encParams.width, encParams.height,
+        encParams.frameRate, encParams.bitrate, encParams.gopSize, encParams.profile);
     return true;
 }
 
@@ -122,28 +136,33 @@ void VideoEncoderOpenH264::UnloadOpenH264SharedLib()
     }
 }
 
-bool VideoEncoderOpenH264::InitParams(const EncoderParams &encParams)
+bool VideoEncoderOpenH264::InitParams()
 {
-    INFO("width:%u, height:%u, framerate:%u, bitrate:%u",
-        encParams.width, encParams.height, encParams.frameRate, encParams.bitrate);
     int rc = m_encoder->GetDefaultParams(&m_paramExt);
     if (rc != 0) {
-        ERR("encoder GetDefaultParams failed, rc = %d", rc);
+        ERR("encoder get default params failed, rc = %d", rc);
         return false;
     }
-    m_paramExt.iPicWidth = encParams.width;
-    m_paramExt.iPicHeight = encParams.height;
-    m_yLength = encParams.width * encParams.height;
+    m_paramExt.iPicWidth = m_encParams.width;
+    m_paramExt.iPicHeight = m_encParams.height;
+    m_yLength = m_encParams.width * m_encParams.height;
     InitParamExt();
-    m_paramExt.iTargetBitrate = encParams.bitrate;
-    m_paramExt.iMaxBitrate = encParams.bitrate;
-    m_paramExt.fMaxFrameRate = encParams.frameRate;
-    m_paramExt.uiIntraPeriod = GOP_SIZE_DEFAULT;
-    m_paramExt.sSpatialLayers[0].iVideoWidth = encParams.width;
-    m_paramExt.sSpatialLayers[0].iVideoHeight = encParams.height;
-    m_paramExt.sSpatialLayers[0].fFrameRate = encParams.frameRate;
+    m_paramExt.iTargetBitrate = m_encParams.bitrate;
+    m_paramExt.iMaxBitrate = m_encParams.bitrate;
+    m_paramExt.fMaxFrameRate = m_encParams.frameRate;
+    m_paramExt.uiIntraPeriod = m_encParams.gopSize;
+    m_paramExt.sSpatialLayers[0].iVideoWidth = m_encParams.width;
+    m_paramExt.sSpatialLayers[0].iVideoHeight = m_encParams.height;
+    m_paramExt.sSpatialLayers[0].fFrameRate = m_encParams.frameRate;
     m_paramExt.sSpatialLayers[0].iSpatialBitrate = m_paramExt.iTargetBitrate;
-    m_paramExt.sSpatialLayers[0].uiProfileIdc = EProfileIdc::PRO_BASELINE;
+    m_paramExt.sSpatialLayers[0].sSliceArgument.uiSliceMode = SM_SINGLE_SLICE;
+    if (m_encParams.profile == ENCODE_PROFILE_HIGH) {
+        m_paramExt.sSpatialLayers[0].uiProfileIdc = EProfileIdc::PRO_HIGH;
+    } else if (m_encParams.profile == ENCODE_PROFILE_MAIN) {
+        m_paramExt.sSpatialLayers[0].uiProfileIdc = EProfileIdc::PRO_MAIN;
+    } else {
+        m_paramExt.sSpatialLayers[0].uiProfileIdc = EProfileIdc::PRO_BASELINE;
+    }
     m_paramExt.sSpatialLayers[0].uiLevelIdc = ELevelIdc::LEVEL_3_2;
     auto videoFormat = EVideoFormatType::videoFormatI420;
     rc = m_encoder->InitializeExt(&m_paramExt);
@@ -173,17 +192,17 @@ void VideoEncoderOpenH264::InitParamExt()
     m_paramExt.bEnableDenoise = 0;
     m_paramExt.bEnableBackgroundDetection = 1;
     m_paramExt.bEnableSceneChangeDetect = 1;
-    m_paramExt.bEnableAdaptiveQuant = 1;
+    m_paramExt.bEnableAdaptiveQuant = 0;
     m_paramExt.bEnableFrameSkip = 0;
     m_paramExt.bEnableLongTermReference = 0;
     m_paramExt.iLtrMarkPeriod = ltrMarkPeriod;
     m_paramExt.bIsLosslessLink = 0;
     m_paramExt.iComplexityMode = ECOMPLEXITY_MODE::HIGH_COMPLEXITY;
     m_paramExt.iNumRefFrame = 1;
-    m_paramExt.iEntropyCodingModeFlag = 0;
+    m_paramExt.iEntropyCodingModeFlag = 1;
     m_paramExt.uiMaxNalSize = 0;
     m_paramExt.iLTRRefNum = 0;
-    m_paramExt.iMultipleThreadIdc = 0;
+    m_paramExt.iMultipleThreadIdc = 1;
     m_paramExt.iLoopFilterDisableIdc = 0;
 }
 
@@ -200,10 +219,17 @@ EncoderRetCode VideoEncoderOpenH264::EncodeOneFrame(const uint8_t *inputData, ui
         ERR("input size error: input size(%u) < frame size(%u)", inputSize, m_frameSize);
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
+    if (m_resetFlag) {
+        if (ResetEncoder() != VIDEO_ENCODER_SUCCESS) {
+            ERR("reset encoder failed while encoding");
+            return VIDEO_ENCODER_ENCODE_FAIL;
+        }
+        m_resetFlag = false;
+    }
     InitSrcPic(inputData);
     int rc = m_encoder->EncodeFrame(&m_srcPic, &m_frameBSInfo);
     if (rc != 0) {
-        ERR("encoder EncodeFrame failed, rc = %d", rc);
+        ERR("encoder encode frame failed, rc = %d", rc);
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
     *outputData = m_frameBSInfo.sLayerInfo->pBsBuf;
@@ -244,4 +270,48 @@ void VideoEncoderOpenH264::Release()
         m_encoder = nullptr;
     }
     UnloadOpenH264SharedLib();
+}
+
+EncoderRetCode VideoEncoderOpenH264::ResetEncoder()
+{
+    INFO("resetting encoder");
+    DestroyEncoder();
+    EncoderRetCode ret = InitEncoder(m_encParams);
+    if (ret != VIDEO_ENCODER_SUCCESS) {
+        ERR("init encoder failed %#x while resetting", ret);
+        return VIDEO_ENCODER_RESET_FAIL;
+    }
+    ret = StartEncoder();
+    if (ret != VIDEO_ENCODER_SUCCESS) {
+        ERR("start encoder failed %#x while resetting", ret);
+        return VIDEO_ENCODER_RESET_FAIL;
+    }
+    INFO("reset encoder success");
+    return VIDEO_ENCODER_SUCCESS;
+}
+
+EncoderRetCode VideoEncoderOpenH264::ForceKeyFrame()
+{
+    int ret = m_encoder->ForceIntraFrame(true);
+    if (ret != 0) {
+        ERR("encoder force intra frame failed: %d", ret);
+        return VIDEO_ENCODER_FORCE_KEY_FRAME_FAIL;
+    }
+    INFO("force key frame success");
+    return VIDEO_ENCODER_SUCCESS;
+}
+
+EncoderRetCode VideoEncoderOpenH264::SetEncodeParams(const EncodeParams &encParams)
+{
+    if (encParams == m_encParams) {
+        WARN("encode params are not changed");
+        return VIDEO_ENCODER_SUCCESS;
+    }
+    if (!VerifyEncodeParams(encParams)) {
+        ERR("encoder params is not supported");
+        return VIDEO_ENCODER_SET_ENCODE_PARAMS_FAIL;
+    }
+    m_encParams = encParams;
+    m_resetFlag = true;
+    return VIDEO_ENCODER_SUCCESS;
 }

@@ -7,14 +7,6 @@
 
 #include "MediaLogDefs.h"
 
-extern "C" {
-/**
- * @功能描述: 设置日志回调函数，注意该接口不支持多线程调用
- * @参数 [in] logCallback: 日志回调函数
- */
-void SetMediaLogCallback(MediaLogCallbackFunc logCallback);
-}
-
 #ifndef LOG_TAG
 #define LOG_TAG "Media"
 #endif
@@ -33,6 +25,12 @@ void SetMediaLogCallback(MediaLogCallbackFunc logCallback);
 #ifdef FATAL
 #undef FATAL
 #endif
+
+/**
+ * @功能描述: 设置日志回调函数，注意该接口不支持多线程调用
+ * @参数 [in] logCallback: 日志回调函数
+ */
+void SetMediaLogCallback(MediaLogCallbackFunc logCallback);
 
 /**
  * @功能描述: 日志打印公共实现接口，供宏函数DBG/INFO/WARN/ERR/FATAL调用

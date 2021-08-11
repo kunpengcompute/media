@@ -5,6 +5,7 @@
 #ifndef VIDEO_ENCODER_OPEN_H264_H
 #define VIDEO_ENCODER_OPEN_H264_H
 
+#include <atomic>
 #include "VideoCodecApi.h"
 #include "codec_api.h"
 
@@ -41,7 +42,7 @@ public:
      * @返回值: VIDEO_ENCODER_SUCCESS 成功
      *          VIDEO_ENCODER_INIT_FAIL 初始化编码器失败
      */
-    EncoderRetCode InitEncoder(const EncoderParams &encParams) override;
+    EncoderRetCode InitEncoder(const EncodeParams &encParams) override;
 
     /**
      * @功能描述: 启动编码器
@@ -74,6 +75,28 @@ public:
      */
     void DestroyEncoder() override;
 
+    /**
+     * @功能描述: 重置编码器
+     * @返回值: VIDEO_ENCODER_SUCCESS 成功
+     *          VIDEO_ENCODER_RESET_FAIL 重置编码器失败
+     */
+    EncoderRetCode ResetEncoder() override;
+
+    /**
+     * @功能描述: 强制I帧
+     * @返回值: VIDEO_ENCODER_SUCCESS 成功
+     *          VIDEO_ENCODER_FORCE_KEY_FRAME_FAIL 强制I帧失败
+     */
+    EncoderRetCode ForceKeyFrame() override;
+
+    /**
+     * @功能描述: 设置编码参数
+     * @参数 [in] encParams: 编码参数结构体
+     * @返回值: VIDEO_ENCODER_SUCCESS 成功
+     *          VIDEO_ENCODER_SET_ENCODE_PARAMS_FAIL 设置编码参数失败
+     */
+    EncoderRetCode SetEncodeParams(const EncodeParams &encParams) override;
+
 private:
     /**
      * @功能描述: 校验编码参数合法性
@@ -81,15 +104,14 @@ private:
      * @返回值: true 成功
      *          false 失败
      */
-    bool VerifyEncodeParam(const EncoderParams &encParams);
+    bool VerifyEncodeParams(const EncodeParams &encParams);
 
     /**
      * @功能描述: 初始化编码器参数
-     * @参数 [in] encParams: 编码参数结构体
      * @返回值: true 成功
      *          false 失败
      */
-    bool InitParams(const EncoderParams &encParams);
+    bool InitParams();
 
     /**
      * @功能描述: 初始化编码器参数
@@ -119,6 +141,8 @@ private:
      */
     void UnloadOpenH264SharedLib();
 
+    EncodeParams m_encParams = {};
+    std::atomic<bool> m_resetFlag = { false };
     ISVCEncoder *m_encoder = nullptr;
     SEncParamExt m_paramExt = {};
     SSourcePicture m_srcPic = {};

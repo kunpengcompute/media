@@ -7,6 +7,7 @@
 #include "VideoEncoderNetint.h"
 #include <dlfcn.h>
 #include <algorithm>
+#include <cstring>
 #include "MediaLog.h"
 
 namespace {

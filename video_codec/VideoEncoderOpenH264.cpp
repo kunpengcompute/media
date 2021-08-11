@@ -8,6 +8,7 @@
 #include <string>
 #include <dlfcn.h>
 #include <cerrno>
+#include <cstring>
 #include "MediaLog.h"
 
 namespace {

@@ -7,6 +7,7 @@
 
 #include <string>
 #include <unordered_map>
+#include <atomic>
 #include "VideoCodecApi.h"
 #include "ni_device_api.h"
 #include "ni_defs.h"
@@ -78,7 +79,7 @@ public:
      * @返回值: VIDEO_ENCODER_SUCCESS 成功
      *          VIDEO_ENCODER_INIT_FAIL 初始化编码器失败
      */
-    EncoderRetCode InitEncoder(const EncoderParams &encParams) override;
+    EncoderRetCode InitEncoder(const EncodeParams &encParams) override;
 
     /**
      * @功能描述: 启动编码器
@@ -111,6 +112,28 @@ public:
      */
     void DestroyEncoder() override;
 
+    /**
+     * @功能描述: 重置编码器
+     * @返回值: VIDEO_ENCODER_SUCCESS 成功
+     *          VIDEO_ENCODER_RESET_FAIL 重置编码器失败
+     */
+    EncoderRetCode ResetEncoder() override;
+
+    /**
+     * @功能描述: 强制I帧
+     * @返回值: VIDEO_ENCODER_SUCCESS 成功
+     *          VIDEO_ENCODER_FORCE_KEY_FRAME_FAIL 强制I帧失败
+     */
+    EncoderRetCode ForceKeyFrame() override;
+
+    /**
+     * @功能描述: 设置编码参数
+     * @参数 [in] encParams: 编码参数结构体
+     * @返回值: VIDEO_ENCODER_SUCCESS 成功
+     *          VIDEO_ENCODER_SET_ENCODE_PARAMS_FAIL 设置编码参数失败
+     */
+    EncoderRetCode SetEncodeParams(const EncodeParams &encParams) override;
+
 private:
     /**
      * @功能描述: 校验编码参数合法性
@@ -118,7 +141,7 @@ private:
      * @返回值: true 成功
      *          false 失败
      */
-    bool VerifyEncodeParam(const EncoderParams &encParams);
+    bool VerifyEncodeParams(const EncodeParams &encParams);
 
     /**
      * @功能描述: 加载NETINT动态库
@@ -134,19 +157,17 @@ private:
 
     /**
      * @功能描述: 初始化编码器资源
-     * @参数 [in] encParams: 编码参数结构体
      * @返回值: true 成功
      *          false 失败
      */
-    bool InitCodec(const EncoderParams &encParams);
+    bool InitCodec();
 
     /**
      * @功能描述: 初始化编码器上下文参数
-     * @参数 [in] encParams: 编码参数结构体
      * @返回值: true 成功
      *          false 失败
      */
-    bool InitCtxParams(const EncoderParams &encParams);
+    bool InitCtxParams();
 
     /**
      * @功能描述: 拷贝一帧数据到编码器
@@ -157,7 +178,9 @@ private:
     bool InitFrameData(const uint8_t *src);
 
     ni_codec_t m_codec = EN_H264;
-    ni_encoder_params_t m_encParams = {};
+    EncodeParams m_encParams = {};
+    std::atomic<bool> m_resetFlag = { false };
+    ni_encoder_params_t m_niEncParams = {};
     ni_session_context_t m_sessionCtx = {};
     ni_device_context_t *m_devCtx = nullptr;
     ni_session_data_io_t m_frame = {};

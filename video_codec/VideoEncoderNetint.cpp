@@ -40,22 +40,23 @@ VideoEncoderNetint::~VideoEncoderNetint()
     INFO("VideoEncoderNetint destructed");
 }
 
-EncoderRetCode VideoEncoderNetint::InitEncoder(const EncoderParams &encParams)
+EncoderRetCode VideoEncoderNetint::InitEncoder(const EncodeParams &encParams)
 {
-    if (!VerifyEncodeParam(encParams)) {
+    if (!VerifyEncodeParams(encParams)) {
         ERR("init encoder failed: encoder params is not supported");
         return VIDEO_ENCODER_INIT_FAIL;
     }
+    m_encParams = encParams;
     if (!LoadNetintSharedLib()) {
         ERR("init encoder failed: load NETINT so error");
         return VIDEO_ENCODER_INIT_FAIL;
     }
-    m_width = static_cast<int>(encParams.width);
-    m_height = static_cast<int>(encParams.height);
+    m_width = static_cast<int>(m_encParams.width);
+    m_height = static_cast<int>(m_encParams.height);
     const int align = (m_codec == EN_H264) ? 16 : 8;  // h.264: 16-aligned, h.265: 8-aligned
     m_widthAlign = std::max(((m_width + align - 1) / align) * align, NI_MIN_WIDTH);
     m_heightAlign = std::max(((m_height + align - 1) / align) * align, NI_MIN_HEIGHT);
-    if (!InitCodec(encParams)) {
+    if (!InitCodec()) {
         ERR("init encoder failed: init codec error");
         return VIDEO_ENCODER_INIT_FAIL;
     }
@@ -70,7 +71,7 @@ EncoderRetCode VideoEncoderNetint::InitEncoder(const EncoderParams &encParams)
     return VIDEO_ENCODER_SUCCESS;
 }
 
-bool VideoEncoderNetint::VerifyEncodeParam(const EncoderParams &encParams)
+bool VideoEncoderNetint::VerifyEncodeParams(const EncodeParams &encParams)
 {
     if (encParams.width > NI_PARAM_MAX_WIDTH || encParams.height > NI_PARAM_MAX_HEIGHT ||
         encParams.width < NI_PARAM_MIN_WIDTH || encParams.height < NI_PARAM_MIN_HEIGHT) {
@@ -85,6 +86,8 @@ bool VideoEncoderNetint::VerifyEncodeParam(const EncoderParams &encParams)
         ERR("bitrate [%u] is not supported", encParams.bitrate);
         return false;
     }
+    INFO("width:%u, height:%u, framerate:%u, bitrate:%u, gopsize:%u, profile:%u", encParams.width, encParams.height,
+        encParams.frameRate, encParams.bitrate, encParams.gopSize, encParams.profile);
     return true;
 }
 
@@ -118,9 +121,9 @@ void VideoEncoderNetint::UnloadNetintSharedLib()
     }
 }
 
-bool VideoEncoderNetint::InitCodec(const EncoderParams &encParams)
+bool VideoEncoderNetint::InitCodec()
 {
-    if (!InitCtxParams(encParams)) {
+    if (!InitCtxParams()) {
         ERR("init context params failed");
         return false;
     }
@@ -131,7 +134,7 @@ bool VideoEncoderNetint::InitCodec(const EncoderParams &encParams)
     m_sessionCtx.codec_format = (m_codec == EN_H264) ? NI_CODEC_FORMAT_H264 : NI_CODEC_FORMAT_H265;
     auto rsrcAllocateAuto = reinterpret_cast<NiRsrcAllocateAutoFunc>(m_funcMap[NI_RSRC_ALLOCATE_AUTO]);
     m_devCtx = (*rsrcAllocateAuto)(NI_DEVICE_TYPE_ENCODER, EN_ALLOC_LEAST_LOAD, m_codec,
-        encParams.width, encParams.height, encParams.frameRate, &m_load);
+        m_encParams.width, m_encParams.height, m_encParams.frameRate, &m_load);
     if (m_devCtx == nullptr) {
         ERR("rsrc allocate auto failed");
         return false;
@@ -148,22 +151,20 @@ bool VideoEncoderNetint::InitCodec(const EncoderParams &encParams)
     m_sessionCtx.device_handle = devHandle;
     m_sessionCtx.blk_io_handle = blkHandle;
     m_sessionCtx.hw_id = 0;
-    m_sessionCtx.p_session_config = &m_encParams;
+    m_sessionCtx.p_session_config = &m_niEncParams;
     m_sessionCtx.src_bit_depth = BIT_DEPTH;
     m_sessionCtx.src_endian = NI_LITTLE_ENDIAN_PLATFORM;
     m_sessionCtx.bit_depth_factor = 1;
     return true;
 }
 
-bool VideoEncoderNetint::InitCtxParams(const EncoderParams &encParams)
+bool VideoEncoderNetint::InitCtxParams()
 {
     const uint32_t defaultBitrate =
         (m_codec == EN_H264) ? 5000000 : 3000000;  // h.264: 5Mbps, h.265: 3Mbps
-    INFO("width: %u, height: %u, framerate: %u, bitrate: %u",
-        encParams.width, encParams.height, encParams.frameRate, defaultBitrate);
     auto encInitDefaultParams = reinterpret_cast<NiEncInitDefaultParamsFunc>(m_funcMap[NI_ENCODER_INIT_DEFAULT_PARAMS]);
-    ni_retcode_t ret = (*encInitDefaultParams)(&m_encParams, encParams.frameRate, 1,
-        defaultBitrate, encParams.width, encParams.height);
+    ni_retcode_t ret = (*encInitDefaultParams)(&m_niEncParams, m_encParams.frameRate, 1,
+        defaultBitrate, m_encParams.width, m_encParams.height);
     if (ret != NI_RETCODE_SUCCESS) {
         ERR("encoder init default params error %d", ret);
         return false;
@@ -183,7 +184,7 @@ bool VideoEncoderNetint::InitCtxParams(const EncoderParams &encParams)
     };
     auto encParamsSetValue = reinterpret_cast<NiEncParamsSetValueFunc>(m_funcMap[NI_ENCODER_PARAMS_SET_VALUE]);
     for (const auto &xParam : xcoderParams) {
-        ret = (*encParamsSetValue)(&m_encParams, xParam.first.c_str(), xParam.second.c_str());
+        ret = (*encParamsSetValue)(&m_niEncParams, xParam.first.c_str(), xParam.second.c_str());
         if (ret != NI_RETCODE_SUCCESS) {
             ERR("encoder params set value error %d: name %s : value %s",
                 ret, xParam.first.c_str(), xParam.second.c_str());
@@ -191,18 +192,18 @@ bool VideoEncoderNetint::InitCtxParams(const EncoderParams &encParams)
         }
     }
     if (m_widthAlign > m_width) {
-        m_encParams.hevc_enc_params.conf_win_right += m_widthAlign - m_width;
+        m_niEncParams.hevc_enc_params.conf_win_right += m_widthAlign - m_width;
         INFO("YUV width aligned adjustment, from %d to %d, win rignt = %d",
-            m_width, m_widthAlign, m_encParams.hevc_enc_params.conf_win_right);
-        m_encParams.source_width = m_widthAlign;
+            m_width, m_widthAlign, m_niEncParams.hevc_enc_params.conf_win_right);
+        m_niEncParams.source_width = m_widthAlign;
     }
     if (m_heightAlign > m_height) {
-        m_encParams.hevc_enc_params.conf_win_bottom += m_heightAlign - m_height;
+        m_niEncParams.hevc_enc_params.conf_win_bottom += m_heightAlign - m_height;
         INFO("YUV height aligned adjustment, from %d to %d, win bottom = %d",
-            m_height, m_heightAlign, m_encParams.hevc_enc_params.conf_win_bottom);
-        m_encParams.source_height = m_heightAlign;
+            m_height, m_heightAlign, m_niEncParams.hevc_enc_params.conf_win_bottom);
+        m_niEncParams.source_height = m_heightAlign;
     }
-    m_encParams.hevc_enc_params.intra_period = GOP_SIZE_DEFAULT;
+    m_niEncParams.hevc_enc_params.intra_period = GOP_SIZE_DEFAULT;
     return true;
 }
 
@@ -219,6 +220,14 @@ EncoderRetCode VideoEncoderNetint::EncodeOneFrame(const uint8_t *inputData, uint
         ERR("input size error: size(%u) < frame size", inputSize);
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
+    if (m_resetFlag) {
+        if (ResetEncoder() != VIDEO_ENCODER_SUCCESS) {
+            ERR("reset encoder failed while encoding");
+            return VIDEO_ENCODER_ENCODE_FAIL;
+        }
+        m_resetFlag = false;
+    }
+
     if (!InitFrameData(inputData)) {
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
@@ -343,4 +352,33 @@ void VideoEncoderNetint::DestroyEncoder()
     (void) (*packetBufferFree)(&(m_packet.data.packet));
     UnloadNetintSharedLib();
     INFO("destroy encoder done");
+}
+
+EncoderRetCode VideoEncoderNetint::ResetEncoder()
+{
+    INFO("resetting encoder");
+
+    INFO("reset encoder success");
+    return VIDEO_ENCODER_SUCCESS;
+}
+
+EncoderRetCode VideoEncoderNetint::ForceKeyFrame()
+{
+    INFO("force key frame success");
+    return VIDEO_ENCODER_SUCCESS;
+}
+
+EncoderRetCode VideoEncoderNetint::SetEncodeParams(const EncodeParams &encParams)
+{
+    if (encParams == m_encParams) {
+        WARN("encode params are not changed");
+        return VIDEO_ENCODER_SUCCESS;
+    }
+    if (!VerifyEncodeParams(encParams)) {
+        ERR("encoder params is not supported");
+        return VIDEO_ENCODER_SET_ENCODE_PARAMS_FAIL;
+    }
+    m_encParams = encParams;
+    m_resetFlag = true;
+    return VIDEO_ENCODER_SUCCESS;
 }

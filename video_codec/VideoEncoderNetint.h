@@ -36,6 +36,8 @@ namespace {
     const std::string NI_FRAME_BUFFER_FREE = "ni_frame_buffer_free";
     const std::string NI_PACKET_BUFFER_ALLOC = "ni_packet_buffer_alloc";
     const std::string NI_PACKET_BUFFER_FREE = "ni_packet_buffer_free";
+    const std::string NI_GET_HW_YUV420P_DIM = "ni_get_hw_yuv420p_dim";
+    const std::string NI_COPY_HW_YUV420P = "ni_copy_hw_yuv420p";
 
     using NiEncInitDefaultParamsFunc =
         ni_retcode_t (*)(ni_encoder_params_t *param, int fpsNum, int fpsDenom, long bitRate, int width, int height);
@@ -59,6 +61,12 @@ namespace {
     using NiFrameBufferFreeFunc = ni_retcode_t (*)(ni_frame_t *frame);
     using NiPacketBufferAllocFunc = ni_retcode_t (*)(ni_packet_t *packet, int packetSize);
     using NiPacketBufferFreeFunc = ni_retcode_t (*)(ni_packet_t *packet);
+    using NiGetHwYuv420pDimFunc = void (*)(int width, int height, int bitDepthFactor, int isH264,
+        int planeStride[NI_MAX_NUM_DATA_POINTERS], int planeHeight[NI_MAX_NUM_DATA_POINTERS]);
+    using NiCopyHwYuv420pFunc = void (*)(uint8_t *dstPtr[NI_MAX_NUM_DATA_POINTERS],
+        uint8_t *srcPtr[NI_MAX_NUM_DATA_POINTERS], int frameWidth, int frameHeight, int bitDepthFactor,
+        int dstStride[NI_MAX_NUM_DATA_POINTERS], int dstHeight[NI_MAX_NUM_DATA_POINTERS],
+        int srcStride[NI_MAX_NUM_DATA_POINTERS],int srcHeight[NI_MAX_NUM_DATA_POINTERS]);
 }
 
 class VideoEncoderNetint : public VideoEncoder {
@@ -207,7 +215,9 @@ private:
         { NI_FRAME_BUFFER_ALLOC_V3, nullptr },
         { NI_FRAME_BUFFER_FREE, nullptr },
         { NI_PACKET_BUFFER_ALLOC, nullptr },
-        { NI_PACKET_BUFFER_FREE, nullptr }
+        { NI_PACKET_BUFFER_FREE, nullptr },
+        { NI_GET_HW_YUV420P_DIM, nullptr },
+        { NI_COPY_HW_YUV420P, nullptr }
     };
 };
 

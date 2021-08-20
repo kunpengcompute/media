@@ -1,6 +1,6 @@
 /*!****************************************************************************
 *
-* Copyright (C)  2019 NETINT Technologies. 
+* Copyright (C)  2018 NETINT Technologies. 
 *
 * Permission to use, copy, modify, and/or distribute this software for any 
 * purpose with or without fee is hereby granted.
@@ -10,7 +10,8 @@
 /*!*****************************************************************************
 *  \file   ni_rsrc_api.h
 *
-*  \brief  Common NETINT definitions used by all modules
+*  \brief  Exported definitions related to resource management of NI T-408 
+*          devices
 *
 *******************************************************************************/
 
@@ -123,7 +124,6 @@ typedef struct _ni_device_info
   ni_device_video_capability_t h265_cap;
 
   ni_sw_instance_info_t sw_instance[NI_MAX_SW_INSTANCE_COUNT];
-  ni_lock_handle_t lock;
 } ni_device_info_t;
 
 typedef struct _ni_device 
@@ -413,6 +413,18 @@ LIB_API ni_device_context_t *ni_rsrc_allocate_simple_direct
 *******************************************************************************/
 LIB_API void ni_rsrc_release_resource(ni_device_context_t *p_ctxt, ni_codec_t codec,
                                       unsigned long load);
+
+/*!*****************************************************************************
+*   \brief      check the NetInt h/w device in resource pool on the host.
+*
+*   \param[in]  guid  the global unique device index in resource pool
+*               device_type     NI_DEVICE_TYPE_DECODER or NI_DEVICE_TYPE_ENCODER
+*
+*   \return
+*               NI_RETCODE_SUCCESS if codec is available,
+*               otherwise ni_retcode_t errors (negative values)
+*******************************************************************************/
+LIB_API int ni_rsrc_codec_is_available(int guid, ni_device_type_t device_type);
 
 /*!*****************************************************************************
 *   \brief      Remove an NetInt h/w device from resource pool on the host.

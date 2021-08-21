@@ -27,8 +27,6 @@ LOCAL_SHARED_LIBRARIES := \
 LOCAL_STATIC_LIBRARIES := \
     libCommon
 
-LOCAL_INIT_RC := ASharedBufferServer.rc
-
 LOCAL_MODULE := libVideoCodec
 
 LOCAL_VENDOR_MODULE := true

@@ -47,8 +47,8 @@ package()
 {
     output_dir=${MODULE_OUTPUT_DIR}
     output_symbols_dir=${MODULE_SYMBOL_DIR}
-    [ -z "${output_dir}" ] && output_dir=${cur_file_path}/output && rm -rf ${output_dir} && mkdir -p ${output_dir}
-    [ -z "${output_symbols_dir}" ] && output_symbols_dir=${cur_file_path}/output/symbols && rm -rf ${output_symbols_dir} && mkdir -p ${output_symbols_dir}
+    [ -z "${output_dir}" ] && output_dir=${cur_file_path}/output/aosp && rm -rf ${output_dir} && mkdir -p ${output_dir}
+    [ -z "${output_symbols_dir}" ] && output_symbols_dir=${cur_file_path}/output/aosp/symbols && rm -rf ${output_symbols_dir} && mkdir -p ${output_symbols_dir}
     for so_name in ${so_list[@]}
     do
         source_path=${AN_AOSPDIR}/out/target/product/generic_arm64/${so_name}
@@ -58,26 +58,26 @@ package()
         symbols_target_path=${output_symbols_dir}/${so_name%/*}
         [ ! -d "${symbols_target_path}" ] && mkdir -p ${symbols_target_path}
         cp -d ${source_path} ${target_path}
-        [ ${?} != 0 ] && error "Failed to copy ${so_name} to ${target_path}"
+        [ ${?} != 0 ] && error "failed to copy ${source_path} to ${target_path}"
         [ -L ${source_path} ] && continue
         cp -d ${source_symbols_path} ${symbols_target_path}
-        [ ${?} != 0 ] && error "Failed to copy ${so_name} to ${symbols_target_path}"
+        [ ${?} != 0 ] && error "failed to copy ${source_symbols_path} to ${symbols_target_path}"
     done
     if [ -z "${MODULE_OUTPUT_DIR}" ];then
-        cd output
-        tar zcvf libVideoCodec.tar.gz vendor
+        cd ${output_dir}
+        tar zcvf ../libVideoCodec_aosp.tar.gz vendor
         cd -
     fi
     if [ -z "${MODULE_SYMBOL_DIR}" ];then
-        cd output/symbols
-        tar zcvf ../libVideoCodecSymbols.tar.gz *
+        cd ${output_symbols_dir}
+        tar zcvf ../../libVideoCodecSymbols_aosp.tar.gz *
         cd -
     fi
 }
 
 clean()
 {
-    rm -rf output
+    [ -z "${MODULE_OUTPUT_DIR}" ] && output_dir=${cur_file_path}/output/aosp && rm -rf ${output_dir}/../libVideoCodec_aosp.tar.gz && rm -rf ${output_dir}/../libVideoCodecSymbols_aosp.tar.gz && rm -rf ${output_dir}
 }
 
 inc()

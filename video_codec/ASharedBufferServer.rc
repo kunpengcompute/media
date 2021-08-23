@@ -1,4 +1,0 @@
-service ASharedBufferServer /vendor/bin/ASharedBufferServer
-    class core
-    user root
-    group root

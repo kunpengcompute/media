@@ -18,7 +18,6 @@ namespace {
     constexpr int U_INDEX = 1;
     constexpr int V_INDEX = 2;
     constexpr int BIT_DEPTH = 8;
-    constexpr int LINE_ALIGN = 32;
     constexpr int NUM_OF_PLANES = 3;
     constexpr int COMPRESS_RATIO = 2;
     const std::string SHARED_LIB_NAME = "libxcoder.so";
@@ -290,34 +289,29 @@ bool VideoEncoderNetint::InitFrameData(const uint8_t *src)
     dataFrame->video_height = m_height;
     dataFrame->extra_data_len = NI_APP_ENC_FRAME_META_DATA_SIZE;
 
-    const int lineSize = ((m_width + LINE_ALIGN - 1) / LINE_ALIGN) * LINE_ALIGN;
-    int planeStride[NUM_OF_PLANES] = { lineSize, lineSize / COMPRESS_RATIO, lineSize / COMPRESS_RATIO };
-    int planeWidth[NUM_OF_PLANES] = { m_width, m_width / COMPRESS_RATIO, m_width / COMPRESS_RATIO };
-    int planeHeight[NUM_OF_PLANES] = { m_height, m_height / COMPRESS_RATIO, m_height / COMPRESS_RATIO };
-    int planeAlign[NUM_OF_PLANES] = { m_heightAlign, m_heightAlign / COMPRESS_RATIO, m_heightAlign / COMPRESS_RATIO };
+    int dstPlaneStride[NUM_OF_PLANES] = {0};
+    int dstPlaneHeight[NUM_OF_PLANES] = {0};
+    auto getHwYuv420pDim = reinterpret_cast<NiGetHwYuv420pDimFunc>(m_funcMap[NI_GET_HW_YUV420P_DIM]);
+    (*getHwYuv420pDim)(m_width, m_height, m_sessionCtx.bit_depth_factor,
+        m_sessionCtx.codec_format == NI_CODEC_FORMAT_H264, dstPlaneStride, dstPlaneHeight);
+
     auto frameBufferAllocV3 = reinterpret_cast<NiFrameBufferAllocV3Func>(m_funcMap[NI_FRAME_BUFFER_ALLOC_V3]);
-    (*frameBufferAllocV3)(dataFrame, m_width, m_height, planeStride,
+    (*frameBufferAllocV3)(dataFrame, m_width, m_height, dstPlaneStride,
         m_sessionCtx.codec_format == NI_CODEC_FORMAT_H264, dataFrame->extra_data_len);
     if (!dataFrame->p_data[Y_INDEX]) {
         ERR("frame buffer alloc failed");
         return false;
     }
-    for (int i = 0; i < NUM_OF_PLANES; ++i) {
-        auto dst = static_cast<uint8_t *>(dataFrame->p_data[i]);
-        int paddingLen = planeStride[i] - planeWidth[i];
-        for (int j = 0; j < planeHeight[i]; ++j) {
-            (void) memcpy(dst, src, planeWidth[i]);
-            dst += planeStride[i];
-            src += planeWidth[i];
-            if (static_cast<ni_encoder_params_t *>(m_sessionCtx.p_session_config)->padding != 0 && paddingLen > 0) {
-                (void) memset(dst - paddingLen, *(dst - paddingLen - 1), paddingLen);
-            }
-        }
-        for (int paddingHeight = planeAlign[i] - planeHeight[i]; paddingHeight > 0; --paddingHeight) {
-            (void) memcpy(dst, dst - planeStride[i], planeStride[i]);
-            dst += planeStride[i];
-        }
-    }
+    int srcPlaneStride[NUM_OF_PLANES] = { m_width, m_width / COMPRESS_RATIO, m_width / COMPRESS_RATIO };
+    int srcPlaneHeight[NUM_OF_PLANES] = { m_height, m_height / COMPRESS_RATIO, m_height / COMPRESS_RATIO };
+    uint8_t *srcPlanes[NUM_OF_PLANES];
+    srcPlanes[Y_INDEX] = const_cast<uint8_t*>(src);
+    srcPlanes[U_INDEX] = srcPlanes[Y_INDEX] + srcPlaneStride[Y_INDEX] * srcPlaneHeight[Y_INDEX];
+    srcPlanes[V_INDEX] = srcPlanes[U_INDEX] + srcPlaneStride[U_INDEX] * srcPlaneHeight[U_INDEX];
+
+    auto copyHwYuv420p = reinterpret_cast<NiCopyHwYuv420pFunc>(m_funcMap[NI_COPY_HW_YUV420P]);
+    (*copyHwYuv420p)((uint8_t**)(dataFrame->p_data), srcPlanes, m_width, m_height, m_sessionCtx.bit_depth_factor,
+        dstPlaneStride, dstPlaneHeight, srcPlaneStride, srcPlaneHeight);
     return true;
 }
 

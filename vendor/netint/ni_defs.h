@@ -1,8 +1,8 @@
 /*!****************************************************************************
 *
-* Copyright (C)  2018 NETINT Technologies.
+* Copyright (C)  2018 NETINT Technologies. 
 *
-* Permission to use, copy, modify, and/or distribute this software for any
+* Permission to use, copy, modify, and/or distribute this software for any 
 * purpose with or without fee is hereby granted.
 *
 *******************************************************************************/
@@ -35,10 +35,11 @@ extern "C"
 #endif
 
 // REVISION = SW_VERSION + "R" + API_FLAVOR + API_VER
-#define NI_XCODER_REVISION                 "244R1C04"
-#define NI_XCODER_FW_VER_SUPPORTED_MIN     "244"
-#define NI_XCODER_FW_API_FLAVORS_SUPPORTED "1C" // Should match one API flavor in NI_XCODER_REVISION
-#define NI_XCODER_FW_API_VER_SUPPORTED_MIN 4
+#define NI_XCODER_REVISION                 "25GR1E09"
+#define NI_XCODER_FW_VER_SUPPORTED_MIN     "258"
+#define NI_XCODER_FW_API_FLAVORS_SUPPORTED "1E" // Should match one API flavor in NI_XCODER_REVISION
+#define NI_XCODER_FW_API_VER_SUPPORTED_MIN 9
+
 #define NI_XCODER_VER_SZ                   3
 #define NI_XCODER_API_FLAVOR_SZ            2
 #define NI_XCODER_API_VER_SZ               2
@@ -57,10 +58,9 @@ extern "C"
   typedef HANDLE  ni_event_handle_t;
   typedef HANDLE  ni_lock_handle_t;
   typedef HANDLE  sem_t;
-  #define NI_INVALID_DEVICE_HANDLE (INVALID_HANDLE_VALUE)
-  #define NI_INVALID_EVENT_HANDLE (INVALID_HANDLE_VALUE)
-  #define NI_INVALID_LOCK_HANDLE   (INVALID_HANDLE_VALUE)
-  #define MAX_DEVICE_CNT 16
+  #define NI_INVALID_DEVICE_HANDLE  (INVALID_HANDLE_VALUE)
+  #define NI_INVALID_EVENT_HANDLE   (NULL)                  // Failure to create an Event returns NULL
+  #define NI_INVALID_LOCK_HANDLE    (NULL)                 // Failure to create a Mutex returns NULL
   #ifdef LIB_DLL
     #ifdef LIB_EXPORTS
       #define LIB_API __declspec(dllexport)
@@ -70,13 +70,6 @@ extern "C"
   #else
     #define LIB_API
   #endif
-
-  #define NI_MAX_FRAME_CHUNK_SZ   0x80000 //0x10000
-  #define NI_MAX_PACKET_SZ        0x20000 //0x10000
-  #define NI_MAX_ENC_PACKET_SZ    3133440
-  #define NI_POLL_INTERVAL        (5*1000)
-  #define NI_INVALID_HWID   (-1)
-  #define NI_INVALID_IO_SIZE   (0)
 #elif __linux__
   typedef int32_t  ni_device_handle_t;
   typedef int32_t  ni_event_handle_t;
@@ -84,13 +77,7 @@ extern "C"
   #define NI_INVALID_DEVICE_HANDLE (-1)
   #define NI_INVALID_EVENT_HANDLE (-1)
   #define NI_INVALID_LOCK_HANDLE   (-1)
-  #define NI_INVALID_HWID   (-1)
-  #define NI_INVALID_IO_SIZE   (0)
-  #define MAX_DEVICE_CNT 256
   #define LIB_API
-
-  #define NI_MAX_PACKET_SZ                0x20000
-  #define NI_POLL_INTERVAL                (2 * 1000)
 
   #define SYS_PARAMS_PREFIX_PATH          "/sys/block/"
   #define SYS_PREFIX_SZ                   strlen(SYS_PARAMS_PREFIX_PATH)
@@ -104,7 +91,21 @@ extern "C"
   #define MAX_IO_TRANSFER_SIZE            3133440
 #endif /* _WIN32 */
 
+// number of system last error
+#ifdef _WIN32
+#define NI_XCODER_NUM_OF_SYSTEM_LAST_ERROR  (GetLastError())
+#else
+#define NI_XCODER_NUM_OF_SYSTEM_LAST_ERROR  (errno)
+#endif
+
+#define NI_INVALID_HWID       (-1)
+#define NI_INVALID_IO_SIZE    (0)
+
+#define MAX_DEVICE_CNT 256
 #define MAX_DEVICE_NAME_LEN 256
+
+#define NI_MAX_PACKET_SZ                0x20000
+#define NI_POLL_INTERVAL                (2 * 1000)
 
 #define NI_MAX_NUM_DATA_POINTERS    3
 
@@ -114,7 +115,7 @@ extern "C"
 
 #define NI_MAX_DEVICES_PER_HW_INSTANCE 4
 
-#define NI_MAX_TX_SZ 0xA00000
+#define NI_MAX_TX_SZ 0x4B00000
 
 #define NI_MEM_PAGE_ALIGNMENT 0x200
 
@@ -129,17 +130,21 @@ extern "C"
 //PTS gap to signal to signal pts jump
 #define NI_MAX_I_P_DIST 8
 
+// invalid sei type
+#define NI_INVALID_SEI_TYPE (-1)
+
+
 
 //bytes size of meta data sent together with YUV: from f/w decoder to app
 #define NI_FW_META_DATA_SZ  40
 // size of meta data sent together with YUV data: from app to f/w encoder
 #define NI_APP_ENC_FRAME_META_DATA_SIZE 56
 // size of meta data sent together with bitstream: from f/w encoder to app
-#define NI_FW_ENC_BITSTREAM_META_DATA_SIZE 24
+#define NI_FW_ENC_BITSTREAM_META_DATA_SIZE 32
 
 //set to 1 if print latency is required
 #define NI_DEBUG_LATENCY 0
-//
+// 
 #define NI_FW_NUM_OF_MEM_SEGS 4
 
 //size of str_fw_API_ver
@@ -181,7 +186,7 @@ typedef enum
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
      _a > _b ? _a : _b; })
-
+     
 #define NI_MIN(a,b) \
    ({ __typeof__ (a) _a = (a); \
        __typeof__ (b) _b = (b); \
@@ -192,6 +197,10 @@ typedef enum
   NI_DEVICE_TYPE_DECODER = 0,
   NI_DEVICE_TYPE_ENCODER = 1
 }ni_device_type_t;
+
+// return number for init
+// if init already, return this
+#define NI_RETCODE_INIT_ALREADY (1)
 
 typedef enum
 {
@@ -270,6 +279,9 @@ typedef enum
   NI_RETCODE_NVME_SC_VPU_RECOVERY                 = 0x3FD,
   NI_RETCODE_NVME_SC_VPU_RSRC_INSUFFICIENT        = 0x3FE, /*!!< Insufficient resource, recommend application termination */
   NI_RETCODE_NVME_SC_VPU_GENERAL_ERROR            = 0x3FF, /*!!< General VPU error, recommend application termination */
+
+  /*! Xcoder Software Specific Error codes */
+  NI_RETCODE_DEFAULT_SESSION_ERR_NO               = 0x4E49,/*!!< The default of session error, 0x4E49 is the ASCII of "NI" */
 } ni_retcode_t;
 
 

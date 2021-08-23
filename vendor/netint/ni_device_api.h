@@ -1,8 +1,8 @@
 /*!****************************************************************************
 *
-* Copyright (C)  2019 NETINT Technologies.
+* Copyright (C)  2018 NETINT Technologies. 
 *
-* Permission to use, copy, modify, and/or distribute this software for any
+* Permission to use, copy, modify, and/or distribute this software for any 
 * purpose with or without fee is hereby granted.
 *
 *******************************************************************************/
@@ -10,7 +10,9 @@
 /*!*****************************************************************************
 *  \file   ni_device_api.h
 *
-*  \brief  Common NETINT definitions used by all modules
+*  \brief  Main NETINT device API header file
+*           provides the ability to communicate with NI T-408 type hardware
+*           transcoder devices
 *
 *******************************************************************************/
 
@@ -25,7 +27,11 @@ extern "C"
 #include "ni_defs.h"
 
 #ifdef _WIN32
+#ifdef MSVC_BUILD
+#include "w32pthreads.h"
+#else
 #include <pthread.h>
+#endif
 #elif __linux__
 #include <pthread.h>
 #include <semaphore.h>
@@ -46,7 +52,8 @@ extern "C"
 
 #define NI_MAX_VUI_SIZE 32
 
-#define NI_MAX_TX_RETRIES 100
+#define FRAME_CHUNK_INDEX_SIZE  4096
+#define NI_SIGNATURE_SIZE       256
 
 #define NI_MAX_RESOLUTION_WIDTH 8192
 #define NI_MAX_RESOLUTION_HEIGHT 8192
@@ -59,6 +66,29 @@ extern "C"
 
 #define NI_MAX_BITRATE 700000000
 #define NI_MIN_BITRATE 64000
+
+#define NI_MAX_INTRA_PERIOD 1024
+#define NI_MIN_INTRA_PERIOD 0
+
+/*Values below used for timeout checking*/
+#define NI_MAX_SESSION_OPEN_RETRIES 20
+#define NI_SESSION_OPEN_RETRY_INTERVAL_US 200
+
+#define NI_MAX_ENC_SESSION_OPEN_QUERY_RETRIES       3000
+#define NI_ENC_SESSION_OPEN_RETRY_INTERVAL_US       1000
+
+#define NI_MAX_ENC_SESSION_WRITE_QUERY_RETRIES      2000
+#define NI_MAX_ENC_SESSION_READ_QUERY_RETRIES       3000
+
+#define NI_MAX_DEC_SESSION_WRITE_QUERY_RETRIES      100
+#define NI_MAX_DEC_SESSION_READ_QUERY_RETRIES       3000
+#define NI_MAX_DEC_SESSION_READ_QUERY_EOS_RETRIES   15000
+
+#define NI_MAX_SESSION_CLOSE_RETRIES        10
+#define NI_SESSION_CLOSE_RETRY_INTERVAL_US  500000
+
+#define NI_RETRY_INTERVAL_100US  100
+#define NI_RETRY_INTERVAL_200US  200
 
 /*Values below used for VPU resolution range checking*/
 #define NI_MAX_WIDTH 8192
@@ -78,8 +108,6 @@ extern "C"
 #define NI_MIN_GOP_PRESET_IDX 0
 #define NI_MAX_DECODING_REFRESH_TYPE 2
 #define NI_MIN_DECODING_REFRESH_TYPE 0
-#define NI_MAX_CU_SIZE_MODE 7
-#define NI_MIN_CU_SIZE_MODE 0
 #define NI_DEFAULT_CU_SIZE_MODE 7
 #define NI_MAX_DYNAMIC_MERGE 1
 #define NI_MIN_DYNAMIC_MERGE 0
@@ -88,16 +116,28 @@ extern "C"
 #define NI_MAX_MAX_NUM_MERGE 3
 #define NI_MIN_MAX_NUM_MERGE 0
 #define NI_MAX_INTRA_QP 51
-#define NI_MIN_INTRA_QP 1
-#define NI_DEFAULT_INTRA_QP 26
-#define NI_INTRA_QP_RANGE   25
+#define NI_MIN_INTRA_QP 0
+#define NI_DEFAULT_INTRA_QP 22
+#define NI_INTRA_QP_RANGE 25
+#define NI_MAX_MAX_QP 51
+#define NI_MIN_MAX_QP 0
+#define NI_MAX_MIN_QP 51
+#define NI_MIN_MIN_QP 0
+#define NI_DEFAULT_MAX_QP 51
+#define NI_DEFAULT_MIN_QP 8
+#define NI_MAX_MAX_DELTA_QP 51
+#define NI_MIN_MAX_DELTA_QP 0
+#define NI_DEFAULT_MAX_DELTA_QP 10
 #define NI_MAX_BIN 1
 #define NI_MIN_BIN 0
 #define NI_MAX_NUM_SESSIONS 32
 #define NI_MAX_CRF 51
-#define NI_MIN_CRF  6
+#define NI_MIN_CRF  0
 #define NI_MIN_INTRA_REFRESH_MIN_PERIOD    0
 #define NI_MAX_INTRA_REFRESH_MIN_PERIOD 8191
+#define NI_MAX_KEEP_ALIVE_TIMEOUT          100
+#define NI_MIN_KEEP_ALIVE_TIMEOUT          1
+#define NI_DEFAULT_KEEP_ALIVE_TIMEOUT      3
 
 #define    RC_SUCCESS           true
 #define    RC_ERROR             false
@@ -124,25 +164,6 @@ extern "C"
 #define NI_VPU_ALIGN2048(_x)           (((_x)+0x7ff)&~0x7ff)
 #define NI_VPU_ALIGN4096(_x)           (((_x)+0xfff)&~0xfff)
 #define NI_VPU_ALIGN16384(_x)          (((_x)+0x3fff)&~0x3fff)
-
-// Maximum SEI sizes for supported types (includes headers and sync word)
-#define NI_MAX_T35_CLOSE_CAPTION_SIZE              120
-#define NI_MASTERING_DISPLAY_COLOUR_VOLUME_SIZE    35
-#define NI_CONTENT_LIGHT_LEVEL_INFO_SIZE           15
-#define NI_MAX_T35_HDR10PLUS_SIZE                  256
-#define NI_MAX_T35_AFD_SIZE                        20
-#define NI_PIC_TIMING_SIZE                         12
-#define NI_BUFFERING_PERIOD_SIZE                   17
-#define NI_USER_DATA_UNREGISTERED_SIZE             50 //40 bytes user payload + 10 bytes overhead
-
-#define NI_ENC_MAX_SEI_BUF_SIZE        NI_VPU_ALIGN8(NI_MAX_T35_CLOSE_CAPTION_SIZE + \
-                                                     NI_MASTERING_DISPLAY_COLOUR_VOLUME_SIZE + \
-                                                     NI_CONTENT_LIGHT_LEVEL_INFO_SIZE + \
-                                                     NI_MAX_T35_HDR10PLUS_SIZE + \
-                                                     NI_PIC_TIMING_SIZE + \
-                                                     NI_BUFFERING_PERIOD_SIZE + \
-                                                     NI_USER_DATA_UNREGISTERED_SIZE)
-
 
 typedef struct _ni_sei_user_data_entry
 {
@@ -188,16 +209,11 @@ typedef enum
   PIC_TYPE_MAX                       /*!*< No Meaning */
 } ni_pic_type_t;
 
-// Maximum SEI sizes for supported types for encoder and decoder
-#define NI_MAX_T35_CLOSE_CAPTION_SIZE              120
-#define NI_MASTERING_DISPLAY_COLOUR_VOLUME_SIZE    35
-#define NI_CONTENT_LIGHT_LEVEL_INFO_SIZE           15
-#define NI_MAX_T35_HDR10PLUS_SIZE                  256
-#define NI_MAX_T35_AFD_SIZE                        20
+#define NI_ENC_MAX_SEI_BUF_SIZE        NI_VPU_ALIGN16(1024) //1024
 
 #define NI_MAX_SEI_ENTRIES      32
 // 32 user_data_entry_t records + various SEI messages sizes
-#define NI_MAX_SEI_DATA     NI_MAX_SEI_ENTRIES * sizeof(ni_sei_user_data_entry_t) + NI_MAX_T35_CLOSE_CAPTION_SIZE + NI_MASTERING_DISPLAY_COLOUR_VOLUME_SIZE + NI_CONTENT_LIGHT_LEVEL_INFO_SIZE + NI_MAX_T35_HDR10PLUS_SIZE + NI_MAX_T35_AFD_SIZE
+#define NI_MAX_SEI_DATA     NI_VPU_ALIGN8(NI_MAX_SEI_ENTRIES * sizeof(ni_sei_user_data_entry_t) + 1024) // 1280
 
 #define NI_DEC_MAX_CC_BUF_SIZE  93      // max 31 CC entries of 3 bytes each
 
@@ -251,7 +267,7 @@ typedef union _ni_enc_hevc_roi_custom_map
 */
 typedef union _ni_enc_avc_roi_custom_map
 {
-  struct
+  struct 
   {
     uint8_t  mb_force_mode  :  2; // [ 1: 0]
     uint8_t  mb_qp          :  6; // [ 7: 2]
@@ -267,7 +283,7 @@ typedef enum _ni_codec_format
   NI_CODEC_FORMAT_H265 = 1
 
 } ni_codec_format_t;
-
+    
 /*!*
 * \brief This is an enumeration for encoder parameter change.
 */
@@ -287,6 +303,8 @@ typedef enum _ni_param_change_flags
   NI_SET_CHANGE_PARAM_BG                  = (1 << 20),
   NI_SET_CHANGE_PARAM_CUSTOM_MD           = (1 << 21),
   NI_SET_CHANGE_PARAM_CUSTOM_LAMBDA       = (1 << 22),
+  NI_SET_CHANGE_PARAM_RC2                 = (1 << 23),
+  NI_SET_CHANGE_PARAM_VUI_HRD_PARAM       = (1 << 24),
 
 } ni_param_change_flags_t;
 
@@ -307,6 +325,7 @@ typedef struct _ni_encoder_change_params_t
   int32_t hvsQpScale;                     /**< QP scaling factor for CU QP adjustment when hvcQpenable is 1. */
   int32_t vbvBufferSize;                  /**< Specifies the size of the VBV buffer in msec (10 ~ 3000). For example, 3000 should be set for 3 seconds. This value is valid when rcEnable is 1. VBV buffer size in bits is EncBitrate * VbvBufferSize / 1000. */
   int32_t mbLevelRcEnable;                /**< (for H.264 encoder) */
+  int32_t fillerEnable;       /**< enables filler data for strict rate control*/
 
   // NI_SET_CHANGE_PARAM_RC_MIN_MAX_QP
   int32_t minQpI;                         /**< A minimum QP of I picture for rate control */
@@ -323,8 +342,15 @@ typedef struct _ni_encoder_change_params_t
   int32_t intraQP;                        /**< A quantization parameter of intra picture */
   int32_t intraPeriod;                    /**< A period of intra picture in GOP size */
   int32_t repeatHeaders; /**< When enabled, encoder repeats the VPS/SPS/PPS headers on I-frames */
-  int32_t reserved[8];
-} ni_encoder_change_params_t;
+
+  // NI_SET_CHANGE_PARAM_VUI_HRD_PARAM
+  uint32_t encodeVuiRbsp;        /**< A flag to encode the VUI syntax in rbsp */
+  uint32_t vuiDataSizeBits;       /**< The bit size of the VUI rbsp data */
+  uint32_t vuiDataSizeBytes;      /**< The byte size of the VUI rbsp data */
+  uint8_t  vuiRbsp[NI_MAX_VUI_SIZE]; /**< VUI raw byte sequence **/
+
+  int32_t reserved[16];          // reserved bytes to make struct size 8-align
+} ni_encoder_change_params_t; // 176 bytes (has to be 8 byte aligned)
 
 /*!*
 * \brief decoded payload format of HDR SEI mastering display colour volume
@@ -434,11 +460,15 @@ typedef struct _ni_load_query
 
 typedef struct _ni_thread_arg_struct_t
 {
-  uint32_t session_id;
-  bool close_thread;
-  ni_device_handle_t device_handle;
-  ni_event_handle_t thread_event_handle;  //only for Windows asynchronous read and write
-  void *p_buffer; // only be used when macro XCODER_IO_RW_ENABLED is defined.
+  int hw_id;                              // Codec ID
+  uint32_t session_id;                    // session id
+  uint64_t session_timestamp;             // Session Start Timestamp
+  bool close_thread;                      // a flag that the keep alive thread is closed or need to be closed
+  uint32_t device_type;                   // Device Type, Either NI_DEVICE_TYPE_DECODER or NI_DEVICE_TYPE_ENCODER
+  ni_device_handle_t device_handle;       // block device handler
+  ni_event_handle_t thread_event_handle;  // only for Windows asynchronous read and write
+  void *p_buffer;                         // only be used when macro XCODER_IO_RW_ENABLED is defined.
+  uint32_t keep_alive_timeout;            // keep alive timeout setting
 }ni_thread_arg_struct_t;
 
 
@@ -547,10 +577,10 @@ typedef struct _ni_session_context
   uint64_t pkt_index;
   uint64_t pkt_offsets_index_min[NI_FIFO_SZ];
   uint64_t pkt_offsets_index[NI_FIFO_SZ];
-  uint8_t *pkt_user_data_unreg_sei[NI_FIFO_SZ];
-  uint32_t pkt_user_data_unreg_sei_len[NI_FIFO_SZ];
-  uint8_t *last_pkt_user_data_unreg_sei;
-  uint32_t last_pkt_user_data_unreg_sei_len;
+  uint8_t *pkt_custom_sei[NI_FIFO_SZ];
+  uint32_t pkt_custom_sei_len[NI_FIFO_SZ];
+  uint8_t *last_pkt_custom_sei;
+  uint32_t last_pkt_custom_sei_len;
 
   /*! if session is on a decoder handling incoming pkt 512-aligned */
   int is_dec_pkt_512_aligned;
@@ -559,16 +589,18 @@ typedef struct _ni_session_context
   ni_device_handle_t device_handle;
   /*! block device fd */
   ni_device_handle_t blk_io_handle;
-
+  
   uint32_t template_config_id;
   void *p_session_config;
-
+  
   /*! Max Linux NVME IO Size */
   uint32_t max_nvme_io_size;
   /*! Codec ID */
   int hw_id;
   /*! Session ID */
   uint32_t session_id;
+  /*! Session Start Timestamp */
+  uint64_t session_timestamp;
   /*! Device Type, Either NI_DEVICE_TYPE_DECODER or NI_DEVICE_TYPE_ENCODER */
   uint32_t device_type;
   /*! Device Type, Either NI_CODEC_FORMAT_H264 or NI_CODEC_FORMAT_H265 */
@@ -609,6 +641,9 @@ typedef struct _ni_session_context
   // Now the code has multithread on the frame level so a mutex is needed for dts queue operations
   pthread_mutex_t *dts_queue_mutex;
 
+  /*! keep alive timeout */
+  uint32_t keep_alive_timeout;
+
   /*! Other */
   int status;
   int key_frame_type;
@@ -620,6 +655,9 @@ typedef struct _ni_session_context
   uint64_t frame_num;
   uint64_t pkt_num;
   int rc_error_count;
+
+  // write packet/frame required buf size
+  uint32_t required_buf_size;
 
   // frame forcing: for encoding
   int force_frame_type;
@@ -651,7 +689,7 @@ typedef struct _ni_session_context
   pthread_t ThreadID_encoder_write[MAX_NUM_OF_THREADS];
   pthread_t ThreadID_encoder_read[MAX_NUM_OF_THREADS];
   pthread_t ThreadID_decoder_read[MAX_NUM_OF_THREADS];
-
+  
   worker_queue_item args_encoder_write[WORKER_QUEUE_DEPTH];
   worker_queue_item args_encoder_read[WORKER_QUEUE_DEPTH];
   worker_queue_item args_decoder_read[WORKER_QUEUE_DEPTH];
@@ -694,15 +732,16 @@ typedef struct _ni_session_context
   ni_event_handle_t event_handle;
   ni_event_handle_t thread_event_handle;
 
+  // decoder lowDelay mode for All I packets or IPPP packets
+  int decoder_low_delay;
 #if NI_DEBUG_LATENCY
   //per context session timestamps for encode latency measure
   long long microseconds_w;
   long long microseconds_w_prev;
   long long microseconds_r;
 #endif
-  int yuv_copy_bypass_fw_support;
-  int yuv_copy_bypass;
-  int yuv_copy_bypass_seperate;
+
+  void *session_info;
 } ni_session_context_t;
 
 /*!*
@@ -713,8 +752,12 @@ typedef enum _ni_reconfig
   XCODER_TEST_RECONF_OFF = 0,
   XCODER_TEST_RECONF_BR = 1,
   XCODER_TEST_RECONF_INTRAPRD = 2,
+  XCODER_TEST_RECONF_VUI_HRD = 3,
+  XCODER_TEST_RECONF_LONG_TERM_REF = 4,
+  XCODER_TEST_RECONF_RC            = 5,
+  XCODER_TEST_RECONF_RC_MIN_MAX_QP = 6,
 } ni_reconfig_t;
-
+ 
 #define NI_ENC_GOP_PARAMS_G0_PIC_TYPE       "g0picType"
 #define NI_ENC_GOP_PARAMS_G0_POC_OFFSET     "g0pocOffset"
 #define NI_ENC_GOP_PARAMS_G0_PIC_QP         "g0picQp"
@@ -820,8 +863,6 @@ typedef struct _ni_custom_gop_params
 #define NI_ENC_PARAM_LOW_DELAY                      "lowDelay"
 #define NI_ENC_PARAM_USE_RECOMMENDED_ENC_PARAMS     "useRecommendEncParam"
 #define NI_ENC_PARAM_USE_LOW_DELAY_POC_TYPE         "useLowDelayPocType"
-#define NI_ENC_PARAM_CU_SIZE_MODE                   "cuSizeMode"
-#define NI_ENC_PARAM_MAX_NUM_MERGE                  "maxNumMerge"
 #define NI_ENC_PARAM_ENABLE_RATE_CONTROL            "RcEnable"
 #define NI_ENC_PARAM_ENABLE_CU_LEVEL_RATE_CONTROL   "cuLevelRCEnable"
 #define NI_ENC_PARAM_ENABLE_HVS_QP                  "hvsQPEnable"
@@ -863,6 +904,11 @@ typedef struct _ni_custom_gop_params
 #define NI_ENC_PARAM_CRF                            "crf"
 #define NI_ENC_PARAM_CBR                            "cbr"
 #define NI_ENC_PARAM_INTRA_REFRESH_MIN_PERIOD       "intraRefreshMinPeriod"
+#define NI_ENC_PARAM_LONG_TERM_REFERENCE_ENABLE     "longTermReferenceEnable"
+// stricter timeout detection enable
+#define NI_ENC_PARAM_STRICT_TIMEOUT_MODE            "strictTimeout"
+#define NI_ENC_PARAM_LOSSLESS_ENABLE                "losslessEnable"
+#define NI_ENC_PARAM_FLUSH_GOP                      "flushGop"
 
 typedef struct _ni_h265_encoder_params
 {
@@ -881,8 +927,6 @@ typedef struct _ni_h265_encoder_params
   int use_recommend_enc_params; /*!*< 0: Custom, 1: Slow speed and best quality, 2: Normal Speed and quality, 3: Fast Speed and Low Quality */
 
   //Encode Options
-  int cu_size_mode;              /*!*< bit 0: enable 8x8 CU, bit 1: enable 16x16 CU, bit 2: enable 32x32 CU */
-  int max_num_merge;             /*!*< Maximum number of merge candidates (0~2) */
 
   struct
   {
@@ -906,6 +950,10 @@ typedef struct _ni_h265_encoder_params
   int roi_enable;
 
   int forced_header_enable;
+
+  int long_term_ref_enable;
+
+  int lossless_enable;
 
   //ConformanceWindowOffsets
   int conf_win_top;   /*!*< A conformance window size of TOP */
@@ -956,6 +1004,7 @@ typedef struct _ni_encoder_params
   int generate_enc_hdrs; // generate encoder headers in advance of encoding
   int use_low_delay_poc_type; // specifies the encoder to set
                               // picture_order_count_type=2 in the H.264 SPS
+  int strict_timeout_mode; // encoder stricter timeout detection mode
 
   // HRD and AUD features related
   int dolby_vision_profile;
@@ -971,6 +1020,7 @@ typedef struct _ni_encoder_params
   int crf;  /*!*< Constant Rate Factor setting */
   int cbr;  //It enables filler data for strict rate control
 
+  uint32_t ui32flushGop; /**< force IDR at the intraPeriod/avcIdrPeriod thus flush Gop **/
   uint32_t ui32minIntraRefreshCycle; /**< min number of intra refresh cycles for intraRefresh feature**/
 
   uint32_t ui32VuiDataSizeBits;       /**< size of VUI RBSP in bits **/
@@ -978,6 +1028,7 @@ typedef struct _ni_encoder_params
   uint8_t  ui8VuiRbsp[NI_MAX_VUI_SIZE]; /**< VUI raw byte sequence **/
   int pos_num_units_in_tick;
   int pos_time_scale;
+
 
   ni_h265_encoder_params_t hevc_enc_params;
   // NETINT_INTERNAL - currently only for internal testing of reconfig, saving
@@ -1002,6 +1053,9 @@ typedef struct _ni_frame
 
   // for encoder: force headers on this frame
   uint16_t force_headers;
+  // for encoder: control long term reference picture feature
+  uint8_t use_cur_src_as_long_term_pic;
+  uint8_t use_long_term_ref;
 
   int force_key_frame;
   // for encoding: frame picture type sent to encoder
@@ -1038,21 +1092,18 @@ typedef struct _ni_frame
 
   void * p_data[NI_MAX_NUM_DATA_POINTERS];
   uint32_t data_len[NI_MAX_NUM_DATA_POINTERS];
-
+  
   // This variable is ued for Zero copy ONLY, It a round down size of Y and round up size if U and V
-  uint32_t data_len_page_aligned[NI_MAX_NUM_DATA_POINTERS];
+  uint32_t data_len_page_aligned[NI_MAX_NUM_DATA_POINTERS];  
 
   void* p_buffer;
-  void* p_buffer_yuv_bypass_y;
-  void* p_buffer_yuv_bypass_u;
-  void* p_buffer_yuv_bypass_v;
   uint32_t buffer_size;
 
   ni_buf_t *dec_buf; // buffer pool entry (has memory pointed to by p_buffer)
   uint8_t preferred_characteristics_data_len;
 
-  uint8_t *p_user_data_unreg_sei;
-  uint32_t user_data_unreg_sei_len;
+  uint8_t *p_custom_sei;
+  uint32_t custom_sei_len;
 } ni_frame_t;
 
 typedef struct _ni_packet
@@ -1075,8 +1126,8 @@ typedef struct _ni_packet
   uint32_t buffer_size;
   uint32_t avg_frame_qp; // average frame QP reported by VPU
 
-  uint8_t *p_user_data_unreg_sei;
-  uint32_t user_data_unreg_sei_len;
+  uint8_t *p_custom_sei;
+  uint32_t custom_sei_len;
   //this packet contains user data unregistered SEI payload but slice payload if set.
   int no_slice;
 } ni_packet_t;
@@ -1090,7 +1141,7 @@ typedef struct _ni_session_data_io
   }data;
 
 } ni_session_data_io_t;
-
+ 
 
 
 #define NI_XCODER_PRESET_NAMES_ARRAY_LEN  3
@@ -1126,7 +1177,7 @@ extern const char* const g_xcoder_log_names[NI_XCODER_LOG_NAMES_ARRAY_LEN];
  *
  *******************************************************************************/
  LIB_API void ni_device_session_context_init(ni_session_context_t *p_ctx);
-
+ 
  /*!******************************************************************************
  *  \brief  Frees previously allocated session context
  *
@@ -1134,25 +1185,25 @@ extern const char* const g_xcoder_log_names[NI_XCODER_LOG_NAMES_ARRAY_LEN];
  *
  *******************************************************************************/
  LIB_API void ni_device_session_context_free(ni_session_context_t *p_ctx);
-
+ 
  /*!******************************************************************************
-  *  \brief  Create event and returnes event handle if successful
+  *  \brief  Create event and returns event handle if successful
   *
   *  \return On success returns a event handle
   *          On failure returns NI_INVALID_EVENT_HANDLE
   *******************************************************************************/
- LIB_API ni_event_handle_t ni_create_event();
-
+ LIB_API ni_event_handle_t ni_create_event(); 
+ 
  /*!******************************************************************************
  *  \brief  Closes event and releases resources
  *
  *  \return NONE
- *
+ *          
  *******************************************************************************/
 LIB_API void ni_close_event(ni_event_handle_t event_handle);
-
+ 
 /*!******************************************************************************
- *  \brief  Opens device and returnes device device_handle if successful
+ *  \brief  Opens device and returns device device_handle if successful
  *
  *  \param[in]  p_dev Device name represented as c string. ex: "/dev/nvme0"
  *  \param[out] p_max_io_size_out Maximum IO Transfer size supported
@@ -1358,7 +1409,7 @@ LIB_API ni_retcode_t ni_decoder_frame_buffer_alloc(ni_buf_pool_t* p_pool, ni_fra
 
 /*!*****************************************************************************
   *  \brief  Allocate memory for the frame buffer based on provided parameters
-  *          taking into account pic line size and extra data.
+  *          taking into account pic line size and extra data. 
   *          Applicable to YUV420p AVFrame only. Cb/Cr size matches that of Y.
   *
   *  \param[in] p_frame       Pointer to a caller allocated ni_frame_t struct

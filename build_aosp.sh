@@ -77,7 +77,21 @@ package()
 
 clean()
 {
-    [ -z "${MODULE_OUTPUT_DIR}" ] && output_dir=${cur_file_path}/output/aosp && rm -rf ${output_dir}/../libVideoCodec_aosp.tar.gz && rm -rf ${output_dir}/../libVideoCodecSymbols_aosp.tar.gz && rm -rf ${output_dir}
+    if [ -z "${MODULE_OUTPUT_DIR}" ];then
+        output_dir=${cur_file_path}/output
+        if [ -f "${output_dir}/libVideoCodec_aosp.tar.gz" ];then
+            rm -rf ${output_dir}/libVideoCodec_aosp.tar.gz
+        fi
+        if [ -f "${output_dir}/libVideoCodecSymbols_aosp.tar.gz" ];then
+            rm -rf ${output_dir}/libVideoCodecSymbols_aosp.tar.gz
+        fi
+        if [ -d "${output_dir}/aosp" ];then
+            rm -rf ${output_dir}/aosp
+        fi
+        if [ -f "${output_dir}" ];then
+            rm -rf ${output_dir}
+        fi
+    fi
 }
 
 inc()

@@ -54,8 +54,21 @@ inc()
 
 clean()
 {
-    rm -rf ${cur_file_path}/build
-    [ -z "${MODULE_OUTPUT_DIR}" ] && output_dir=${cur_file_path}/output/linux && rm -rf ${output_dir}/../libVideoCodec_linux.tar.gz && rm -rf ${output_dir}
+    if [ -d "${cur_file_path}/build" ];then
+        rm -rf ${cur_file_path}/build
+    fi
+    if [ -z "${MODULE_OUTPUT_DIR}" ];then
+        output_dir=${cur_file_path}/output
+        if [ -f "${output_dir}/libVideoCodec_linux.tar.gz" ];then
+            rm -rf ${output_dir}/libVideoCodec_linux.tar.gz
+        fi
+        if [ -d "${output_dir}/linux" ];then
+            rm -rf ${output_dir}/linux
+        fi
+        if [ -f "${output_dir}" ];then
+            rm -rf ${output_dir}
+        fi
+    fi
 }
 
 build()

@@ -9,21 +9,6 @@
 #include "VideoCodecApi.h"
 #include "codec_api.h"
 
-namespace {
-    /**
-     * @功能描述: 创建编码器实例
-     * @参数 [out] encoder: 编码器实例
-     * @返回值: 0为成功；其他为失败
-     */
-    using WelsCreateSVCEncoderFuncPtr = int (*)(ISVCEncoder** encoder);
-
-    /**
-     * @功能描述: 销毁编码器实例
-     * @参数 [in] encoder: 编码器实例
-     */
-    using WelsDestroySVCEncoderFuncPtr = int (*)(ISVCEncoder* encoder);
-}
-
 class VideoEncoderOpenH264 : public VideoEncoder {
 public:
     /**
@@ -136,11 +121,6 @@ private:
      */
     bool LoadOpenH264SharedLib();
 
-    /**
-     * @功能描述: 卸载OpenH264动态库
-     */
-    void UnloadOpenH264SharedLib();
-
     EncodeParams m_encParams = {};
     std::atomic<bool> m_resetFlag = { false };
     ISVCEncoder *m_encoder = nullptr;
@@ -149,9 +129,6 @@ private:
     SFrameBSInfo m_frameBSInfo = {};
     uint32_t m_yLength = 0;
     uint32_t m_frameSize = 0;
-    WelsCreateSVCEncoderFuncPtr m_welsCreateSVCEncoder = nullptr;
-    WelsDestroySVCEncoderFuncPtr m_welsDestroySVCEncoder = nullptr;
-    void *m_libHandle = nullptr;
 };
 
 #endif  // VIDEO_ENCODER_OPEN_H264_H

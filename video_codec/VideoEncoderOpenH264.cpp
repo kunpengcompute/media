@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <cerrno>
 #include <cstring>
+#include <atomic>
 #include "MediaLog.h"
 
 namespace {
@@ -20,13 +21,29 @@ namespace {
     constexpr uint32_t BITRATE_MAX = 10000000;
     constexpr uint32_t GOPSIZE_MIN = 30;
     constexpr uint32_t GOPSIZE_MAX = 3000;
-
-    const std::string SHARED_LIB_NAME = "libopenh264.so";
-    const std::string WELS_CREATE_SVC_ENCODER = "WelsCreateSVCEncoder";
-    const std::string WELS_DESTROY_SVC_ENCODER = "WelsDestroySVCEncoder";
-
     constexpr uint32_t COMPRESS_RATIO = 2;
     constexpr uint32_t PRIMARY_COLOURS = 3;
+
+
+    const std::string WELS_CREATE_SVC_ENCODER = "WelsCreateSVCEncoder";
+    const std::string WELS_DESTROY_SVC_ENCODER = "WelsDestroySVCEncoder";
+    /**
+     * @功能描述: 创建编码器实例
+     * @参数 [out] encoder: 编码器实例
+     * @返回值: 0为成功；其他为失败
+     */
+    using WelsCreateSVCEncoderFuncPtr = int (*)(ISVCEncoder** encoder);
+
+    /**
+     * @功能描述: 销毁编码器实例
+     * @参数 [in] encoder: 编码器实例
+     */
+    using WelsDestroySVCEncoderFuncPtr = void (*)(ISVCEncoder* encoder);
+    WelsCreateSVCEncoderFuncPtr g_welsCreateSVCEncoder = nullptr;
+    WelsDestroySVCEncoderFuncPtr g_welsDestroySVCEncoder = nullptr;
+    const std::string SHARED_LIB_NAME = "libopenh264.so";
+    std::atomic<bool> g_openH264Loaded = { false };
+    void *g_libHandle = nullptr;
 }
 
 VideoEncoderOpenH264::VideoEncoderOpenH264()
@@ -51,7 +68,7 @@ EncoderRetCode VideoEncoderOpenH264::InitEncoder(const EncodeParams &encParams)
         ERR("init encoder failed: load openh264 shared lib failed");
         return VIDEO_ENCODER_INIT_FAIL;
     }
-    int rc = (*m_welsCreateSVCEncoder)(&m_encoder);
+    int rc = (*g_welsCreateSVCEncoder)(&m_encoder);
     if (rc != 0) {
         ERR("init encoder failed: create encoder failed, rc = %d", rc);
         return VIDEO_ENCODER_INIT_FAIL;
@@ -100,40 +117,33 @@ bool VideoEncoderOpenH264::VerifyEncodeParams(const EncodeParams &encParams)
 
 bool VideoEncoderOpenH264::LoadOpenH264SharedLib()
 {
+    if (g_openH264Loaded) {
+        return true;
+    }
     INFO("load %s", SHARED_LIB_NAME.c_str());
-    m_libHandle = dlopen(SHARED_LIB_NAME.c_str(), RTLD_NOW);
-    if (m_libHandle == nullptr) {
+    g_libHandle = dlopen(SHARED_LIB_NAME.c_str(), RTLD_LAZY);
+    if (g_libHandle == nullptr) {
         const char *errStr = dlerror();
         ERR("load %s error:%s", SHARED_LIB_NAME.c_str(), (errStr != nullptr) ? errStr : "unknown");
         return false;
     }
 
-    m_welsCreateSVCEncoder = reinterpret_cast<WelsCreateSVCEncoderFuncPtr>(
-        dlsym(m_libHandle, WELS_CREATE_SVC_ENCODER.c_str()));
-    if (m_welsCreateSVCEncoder == nullptr) {
+    g_welsCreateSVCEncoder = reinterpret_cast<WelsCreateSVCEncoderFuncPtr>(
+        dlsym(g_libHandle, WELS_CREATE_SVC_ENCODER.c_str()));
+    if (g_welsCreateSVCEncoder == nullptr) {
         ERR("failed to load WelsCreateSVCEncoder");
-        UnloadOpenH264SharedLib();
         return false;
     }
 
-    m_welsDestroySVCEncoder = reinterpret_cast<WelsDestroySVCEncoderFuncPtr>(
-        dlsym(m_libHandle, WELS_DESTROY_SVC_ENCODER.c_str()));
-    if (m_welsDestroySVCEncoder == nullptr) {
+    g_welsDestroySVCEncoder = reinterpret_cast<WelsDestroySVCEncoderFuncPtr>(
+        dlsym(g_libHandle, WELS_DESTROY_SVC_ENCODER.c_str()));
+    if (g_welsDestroySVCEncoder == nullptr) {
         ERR("failed to load WelsDestroySVCEncoder");
-        UnloadOpenH264SharedLib();
-        m_welsCreateSVCEncoder = nullptr;
+        g_welsCreateSVCEncoder = nullptr;
         return false;
     }
+    g_openH264Loaded = true;
     return true;
-}
-
-void VideoEncoderOpenH264::UnloadOpenH264SharedLib()
-{
-    if (m_libHandle != nullptr) {
-        DBG("unload %s", SHARED_LIB_NAME.c_str());
-        (void) dlclose(m_libHandle);
-        m_libHandle = nullptr;
-    }
 }
 
 bool VideoEncoderOpenH264::InitParams()
@@ -266,10 +276,9 @@ void VideoEncoderOpenH264::Release()
 {
     if (m_encoder != nullptr) {
         (void) m_encoder->Uninitialize();
-        (*m_welsDestroySVCEncoder)(m_encoder);
+        (*g_welsDestroySVCEncoder)(m_encoder);
         m_encoder = nullptr;
     }
-    UnloadOpenH264SharedLib();
 }
 
 EncoderRetCode VideoEncoderOpenH264::ResetEncoder()

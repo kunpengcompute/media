@@ -96,11 +96,11 @@ bool VideoEncoderOpenH264::VerifyEncodeParams(const EncodeParams &encParams)
         ERR("framerate [%u] is not supported", encParams.frameRate);
         return false;
     }
-    if (encParams.bitrate < BITRATE_MIN && encParams.bitrate > BITRATE_MAX) {
+    if (encParams.bitrate < BITRATE_MIN || encParams.bitrate > BITRATE_MAX) {
         ERR("bitrate [%u] is not supported", encParams.bitrate);
         return false;
     }
-    if (encParams.gopSize < GOPSIZE_MIN && encParams.gopSize > GOPSIZE_MAX) {
+    if (encParams.gopSize < GOPSIZE_MIN || encParams.gopSize > GOPSIZE_MAX) {
         ERR("gopsize [%u] is not supported", encParams.gopSize);
         return false;
     }

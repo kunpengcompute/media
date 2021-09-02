@@ -14,7 +14,8 @@
 namespace {
     constexpr uint32_t FRAMERATE_MIN = 30;
     constexpr uint32_t FRAMERATE_MAX = 60;
-    constexpr int GOP_SIZE_DEFAULT = 300;
+    constexpr uint32_t GOPSIZE_MIN = 30;
+    constexpr uint32_t GOPSIZE_MAX = 3000;
     constexpr int Y_INDEX = 0;
     constexpr int U_INDEX = 1;
     constexpr int V_INDEX = 2;
@@ -158,8 +159,18 @@ bool VideoEncoderNetint::VerifyEncodeParams(const EncodeParams &encParams)
         ERR("framerate [%u] is not supported", encParams.frameRate);
         return false;
     }
-    if (encParams.bitrate < NI_MIN_BITRATE && encParams.bitrate > NI_MAX_BITRATE) {
+    if (encParams.bitrate < NI_MIN_BITRATE || encParams.bitrate > NI_MAX_BITRATE) {
         ERR("bitrate [%u] is not supported", encParams.bitrate);
+        return false;
+    }
+    if (encParams.gopSize < GOPSIZE_MIN || encParams.gopSize > GOPSIZE_MAX) {
+        ERR("gopsize [%u] is not supported", encParams.gopSize);
+        return false;
+    }
+    if (encParams.profile != ENCODE_PROFILE_BASELINE &&
+        encParams.profile != ENCODE_PROFILE_MAIN &&
+        encParams.profile != ENCODE_PROFILE_HIGH) {
+        ERR("profile [%u] is not supported", encParams.profile);
         return false;
     }
     INFO("width:%u, height:%u, framerate:%u, bitrate:%u, gopsize:%u, profile:%u", encParams.width, encParams.height,
@@ -273,7 +284,7 @@ bool VideoEncoderNetint::InitCtxParams()
             m_height, m_heightAlign, m_niEncParams.hevc_enc_params.conf_win_bottom);
         m_niEncParams.source_height = m_heightAlign;
     }
-    m_niEncParams.hevc_enc_params.intra_period = GOP_SIZE_DEFAULT;
+    m_niEncParams.hevc_enc_params.intra_period = m_encParams.gopSize;
     return true;
 }
 

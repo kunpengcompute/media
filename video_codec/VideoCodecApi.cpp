@@ -9,13 +9,9 @@
 #include "VideoEncoderNetint.h"
 #include "MediaLog.h"
 
-bool RegisterMediaLogCallback(const MediaLogCallbackFunc logCallback)
+void RegisterMediaLogCallback(const MediaLogCallbackFunc logCallback)
 {
-    if (logCallback == nullptr) {
-        return false;
-    }
     SetMediaLogCallback(logCallback);
-    return true;
 }
 
 EncoderRetCode CreateVideoEncoder(uint32_t encType, VideoEncoder** encoder)

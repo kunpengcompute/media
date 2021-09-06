@@ -44,7 +44,7 @@ public:
     MediaLogLevel GetLogLevel() const;
 
 private:
-    MediaLogManager() = default;
+    MediaLogManager();
     ~MediaLogManager() = default;
     MediaLogManager(const MediaLogManager&) = delete;
     MediaLogManager& operator=(const MediaLogManager&) = delete;

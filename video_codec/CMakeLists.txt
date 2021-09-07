@@ -9,12 +9,14 @@ include_directories(
     ${COMMON_REL_DIR}/log
     ${VENDOR_REL_DIR}/openh264
     ${VENDOR_REL_DIR}/netint
+    ${VENDOR_REL_DIR}/vpe
 )
 
 set(Srcs
     VideoCodecApi.cpp
     VideoEncoderOpenH264.cpp
     VideoEncoderNetint.cpp
+    VideoEncoderVpe.cpp
 )
 
 add_library(${PROJECT_NAME} SHARED ${Srcs})

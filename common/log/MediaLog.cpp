@@ -17,7 +17,7 @@ void SetMediaLogCallback(MediaLogCallbackFunc logCallback)
 void MediaLogPrint(int level, const char *tag, const char *fmt, ...)
 {
     MediaLogManager &logManager = MediaLogManager::GetInstance();
-    if (logManager.IsLogCallbackNull() ||level < logManager.GetLogLevel() ||
+    if (logManager.IsLogCallbackNull() || level < logManager.GetLogLevel() ||
         level > LOG_LEVEL_FATAL || fmt == nullptr) {
         return;
     }

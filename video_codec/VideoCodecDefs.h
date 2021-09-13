@@ -49,7 +49,9 @@ struct EncodeParams {
 enum EncoderType : uint32_t {
     ENCODER_TYPE_OPENH264 = 0x01,    // 开源OpenH264编码器
     ENCODER_TYPE_NETINTH264 = 0x02,  // NETINT h.264硬件编码器
-    ENCODER_TYPE_NETINTH265 = 0x03   // NETINT h.265硬件编码器
+    ENCODER_TYPE_NETINTH265 = 0x03,  // NETINT h.265硬件编码器
+    ENCODER_TYPE_VPEH264 = 0x04,     // 涌现科技 h.264硬件编码器
+    ENCODER_TYPE_VPEH265 = 0x05      // 涌现科技 h.265硬件编码器
 };
 
 #endif  // VIDEO_CODEC_DEFS_H

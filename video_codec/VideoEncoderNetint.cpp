@@ -7,14 +7,12 @@
 #include <dlfcn.h>
 #include <algorithm>
 #include <cstring>
+#include <string>
 #include <atomic>
 #include "MediaLog.h"
+#include "Property.h"
 
 namespace {
-    constexpr uint32_t FRAMERATE_MIN = 30;
-    constexpr uint32_t FRAMERATE_MAX = 60;
-    constexpr uint32_t GOPSIZE_MIN = 30;
-    constexpr uint32_t GOPSIZE_MAX = 3000;
     constexpr int Y_INDEX = 0;
     constexpr int U_INDEX = 1;
     constexpr int V_INDEX = 2;
@@ -47,7 +45,7 @@ namespace {
     using NiEncParamsSetValueFunc =
         ni_retcode_t (*)(ni_encoder_params_t *params, const char *name, const char *value);
     using NiRsrcAllocateAutoFunc = ni_device_context_t* (*)(ni_device_type_t devType, ni_alloc_rule_t rule,
-        ni_codec_t codec, int width, int height, int frameRate, unsigned long *load);
+        ni_codec_t codec, int width, int height, int framerate, unsigned long *load);
     using NiRsrcReleaseResourceFunc = void (*)(ni_device_context_t *devCtx, ni_codec_t codec, unsigned long load);
     using NiRsrcFreeDeviceContextFunc = void (*)(ni_device_context_t *devCtx);
     using NiDeviceOpenFunc = ni_device_handle_t (*)(const char *dev, uint32_t *maxIoSizeOut);
@@ -71,7 +69,7 @@ namespace {
     using NiCopyHwYuv420pFunc = void (*)(uint8_t *dstPtr[NI_MAX_NUM_DATA_POINTERS],
         uint8_t *srcPtr[NI_MAX_NUM_DATA_POINTERS], int frameWidth, int frameHeight, int bitDepthFactor,
         int dstStride[NI_MAX_NUM_DATA_POINTERS], int dstHeight[NI_MAX_NUM_DATA_POINTERS],
-        int srcStride[NI_MAX_NUM_DATA_POINTERS],int srcHeight[NI_MAX_NUM_DATA_POINTERS]);
+        int srcStride[NI_MAX_NUM_DATA_POINTERS], int srcHeight[NI_MAX_NUM_DATA_POINTERS]);
 
     std::unordered_map<std::string, void*> g_funcMap = {
         { NI_ENCODER_INIT_DEFAULT_PARAMS, nullptr },
@@ -95,6 +93,12 @@ namespace {
         { NI_GET_HW_YUV420P_DIM, nullptr },
         { NI_COPY_HW_YUV420P, nullptr }
     };
+
+    std::unordered_map<std::string, std::string> g_transProfile = {
+        {"baseline", "66"},
+        {"main", "77"},
+        {"high", "100"}};
+
     const std::string SHARED_LIB_NAME = "libxcoder.so";
     std::atomic<bool> g_netintLoaded = { false };
     void *g_libHandle = nullptr;
@@ -106,6 +110,8 @@ VideoEncoderNetint::VideoEncoderNetint(NiCodecType codecType)
         m_codec = EN_H264;
     } else {
         m_codec = EN_H265;
+        m_encParams.bitrate = static_cast<uint32_t>(BITRATE_DEFAULT_265);
+        m_encParams.profile = ENCODE_PROFILE_MAIN;
     }
     INFO("VideoEncoderNetint constructed %s", (m_codec == EN_H264) ? "h.264" : "h.265");
 }
@@ -116,13 +122,82 @@ VideoEncoderNetint::~VideoEncoderNetint()
     INFO("VideoEncoderNetint destructed");
 }
 
-EncoderRetCode VideoEncoderNetint::InitEncoder(const EncodeParams &encParams)
+bool VideoEncoderNetint::GetRoEncParam()
 {
-    if (!VerifyEncodeParams(encParams)) {
-        ERR("init encoder failed: encoder params is not supported");
+    int32_t width = 0;
+    int32_t height = 0;
+    int32_t framerate = 0;
+    std::string phoneMode = GetStrEncParam("ro.sys.vmi.cloudphone");
+    if (phoneMode == "video") {
+        width = GetIntEncParam("ro.hardware.width");
+        height = GetIntEncParam("ro.hardware.height");
+        framerate = GetIntEncParam("ro.hardware.fps");
+    } else if (phoneMode == "instruction") {
+        width = GetIntEncParam("persist.vmi.demo.video.encode.width");
+        height = GetIntEncParam("persist.vmi.demo.video.encode.height");
+        framerate = GetIntEncParam("persist.vmi.demo.video.encode.framerate");
+    } else {
+        ERR("Invalid property value[%s] for property[ro.sys.vmi.cloudphone], get property failed!", phoneMode.c_str());
+        return false;
+    }
+
+    if (!VerifyEncodeRoParams(width, height, framerate)) {
+        ERR("encoder params is not supported");
+        return false;
+    }
+
+    m_tmpEncParams.width = width;
+    m_tmpEncParams.height = height;
+    m_tmpEncParams.framerate = framerate;
+    return true;
+}
+
+bool VideoEncoderNetint::GetPersistEncParam()
+{
+    std::string bitrate = "";
+    std::string gopsize = "";
+    std::string profile = "";
+    std::string phoneMode = GetStrEncParam("ro.sys.vmi.cloudphone");
+    if (phoneMode == "video") {
+        bitrate = GetStrEncParam("persist.vmi.video.encode.bitrate");
+        gopsize = GetStrEncParam("persist.vmi.video.encode.gopsize");
+        profile = GetStrEncParam("persist.vmi.video.encode.profile");
+    } else if (phoneMode == "instruction") {
+        bitrate = GetStrEncParam("persist.vmi.demo.video.encode.bitrate");
+        gopsize = GetStrEncParam("persist.vmi.demo.video.encode.gopsize");
+        profile = GetStrEncParam("persist.vmi.demo.video.encode.profile");
+    } else {
+        ERR("Invalid property value[%s] for property[ro.sys.vmi.cloudphone], get property failed!", phoneMode.c_str());
+        return false;
+    }
+
+    if (!VerifyEncodeParams(bitrate, gopsize, profile)) {
+        SetEncParam("persist.vmi.video.encode.bitrate", std::to_string(m_encParams.bitrate).c_str());
+        SetEncParam("persist.vmi.video.encode.gopsize", std::to_string(m_encParams.gopsize).c_str());
+        SetEncParam("persist.vmi.video.encode.profile", m_encParams.profile.c_str());
+    } else {
+        m_tmpEncParams.bitrate = StrToInt(bitrate);
+        m_tmpEncParams.gopsize = StrToInt(gopsize);
+        m_tmpEncParams.profile = profile;
+    }
+
+    return true;
+}
+
+bool VideoEncoderNetint::EncodeParamsChange()
+{
+    return (m_tmpEncParams.bitrate != m_encParams.bitrate) || (m_tmpEncParams.gopsize != m_encParams.gopsize)
+        || (m_tmpEncParams.profile != m_encParams.profile) || (m_tmpEncParams.width != m_encParams.width)
+        || (m_tmpEncParams.height != m_encParams.height) || (m_tmpEncParams.framerate != m_encParams.framerate);
+}
+
+EncoderRetCode VideoEncoderNetint::InitEncoder()
+{
+    if ((!GetRoEncParam()) || (!GetPersistEncParam())) {
+        ERR("init encoder failed: GetEncParam failed");
         return VIDEO_ENCODER_INIT_FAIL;
     }
-    m_encParams = encParams;
+    m_encParams = m_tmpEncParams;
     if (!LoadNetintSharedLib()) {
         ERR("init encoder failed: load NETINT so error");
         return VIDEO_ENCODER_INIT_FAIL;
@@ -143,38 +218,48 @@ EncoderRetCode VideoEncoderNetint::InitEncoder(const EncodeParams &encParams)
         return VIDEO_ENCODER_INIT_FAIL;
     }
     m_frame.data.frame.start_of_stream = 1;
+    m_isInited = true;
     INFO("init encoder success");
     return VIDEO_ENCODER_SUCCESS;
 }
 
-bool VideoEncoderNetint::VerifyEncodeParams(const EncodeParams &encParams)
+bool VideoEncoderNetint::VerifyEncodeRoParams(int32_t width, int32_t height, int32_t framerate)
 {
-    if (encParams.width > NI_PARAM_MAX_WIDTH || encParams.height > NI_PARAM_MAX_HEIGHT ||
-        encParams.width < NI_PARAM_MIN_WIDTH || encParams.height < NI_PARAM_MIN_HEIGHT) {
-        ERR("resolution [%ux%u] is not supported", encParams.width, encParams.height);
-        return false;
+    bool isEncodeParamsTrue = true;
+    if (width > NI_PARAM_MAX_WIDTH || height > NI_PARAM_MAX_HEIGHT ||
+        width < NI_PARAM_MIN_WIDTH || height < NI_PARAM_MIN_HEIGHT) {
+        ERR("Invalid property value[%dx%d] for property[width,height], get property failed!", width, height);
+        isEncodeParamsTrue = false;
     }
-    if (encParams.frameRate != FRAMERATE_MIN && encParams.frameRate != FRAMERATE_MAX) {
-        ERR("framerate [%u] is not supported", encParams.frameRate);
-        return false;
+    if (framerate != FRAMERATE_MIN && framerate != FRAMERATE_MAX) {
+        ERR("Invalid property value[%d] for property[framerate], get property failed!", framerate);
+        isEncodeParamsTrue = false;
     }
-    if (encParams.bitrate < NI_MIN_BITRATE || encParams.bitrate > NI_MAX_BITRATE) {
-        ERR("bitrate [%u] is not supported", encParams.bitrate);
-        return false;
+    return isEncodeParamsTrue;
+}
+
+bool VideoEncoderNetint::VerifyEncodeParams(std::string &bitrate, std::string &gopsize, std::string &profile)
+{
+    bool isEncodeParamsTrue = true;
+    if ((StrToInt(bitrate) < (int32_t)BITRATE_MIN) || (StrToInt(bitrate) > (int32_t)BITRATE_MAX)) {
+        WARN("Invalid property value[%s] for property[bitrate], use last correct encode bitrate[%u]",
+            bitrate.c_str(), m_encParams.bitrate);
+        isEncodeParamsTrue = false;
     }
-    if (encParams.gopSize < GOPSIZE_MIN || encParams.gopSize > GOPSIZE_MAX) {
-        ERR("gopsize [%u] is not supported", encParams.gopSize);
-        return false;
+    if ((StrToInt(gopsize) < (int32_t)GOPSIZE_MIN) || (StrToInt(gopsize) > (int32_t)GOPSIZE_MAX)) {
+        WARN("Invalid property value[%s] for property[gopsize], use last correct encode gopsize[%u]",
+            gopsize.c_str(), m_encParams.gopsize);
+        isEncodeParamsTrue = false;
     }
-    if (encParams.profile != ENCODE_PROFILE_BASELINE &&
-        encParams.profile != ENCODE_PROFILE_MAIN &&
-        encParams.profile != ENCODE_PROFILE_HIGH) {
-        ERR("profile [%u] is not supported", encParams.profile);
-        return false;
+    if (profile != ENCODE_PROFILE_BASELINE &&
+        profile != ENCODE_PROFILE_MAIN &&
+        profile != ENCODE_PROFILE_HIGH) {
+        WARN("Invalid property value[%s] for property[profile], use last correct encode profile[%s]",
+            profile.c_str(), m_encParams.profile.c_str());
+        isEncodeParamsTrue = false;
     }
-    INFO("width:%u, height:%u, framerate:%u, bitrate:%u, gopsize:%u, profile:%u", encParams.width, encParams.height,
-        encParams.frameRate, encParams.bitrate, encParams.gopSize, encParams.profile);
-    return true;
+
+    return isEncodeParamsTrue;
 }
 
 bool VideoEncoderNetint::LoadNetintSharedLib()
@@ -214,7 +299,7 @@ bool VideoEncoderNetint::InitCodec()
     m_sessionCtx.codec_format = (m_codec == EN_H264) ? NI_CODEC_FORMAT_H264 : NI_CODEC_FORMAT_H265;
     auto rsrcAllocateAuto = reinterpret_cast<NiRsrcAllocateAutoFunc>(g_funcMap[NI_RSRC_ALLOCATE_AUTO]);
     m_devCtx = (*rsrcAllocateAuto)(NI_DEVICE_TYPE_ENCODER, EN_ALLOC_LEAST_LOAD, m_codec,
-        m_encParams.width, m_encParams.height, m_encParams.frameRate, &m_load);
+        m_encParams.width, m_encParams.height, m_encParams.framerate, &m_load);
     if (m_devCtx == nullptr) {
         ERR("rsrc allocate auto failed");
         return false;
@@ -240,11 +325,9 @@ bool VideoEncoderNetint::InitCodec()
 
 bool VideoEncoderNetint::InitCtxParams()
 {
-    const uint32_t defaultBitrate =
-        (m_codec == EN_H264) ? 5000000 : 3000000;  // h.264: 5Mbps, h.265: 3Mbps
     auto encInitDefaultParams = reinterpret_cast<NiEncInitDefaultParamsFunc>(g_funcMap[NI_ENCODER_INIT_DEFAULT_PARAMS]);
-    ni_retcode_t ret = (*encInitDefaultParams)(&m_niEncParams, m_encParams.frameRate, 1,
-        defaultBitrate, m_encParams.width, m_encParams.height);
+    ni_retcode_t ret = (*encInitDefaultParams)(
+        &m_niEncParams, m_encParams.framerate, 1, m_encParams.bitrate, m_encParams.width, m_encParams.height);
     if (ret != NI_RETCODE_SUCCESS) {
         ERR("encoder init default params error %d", ret);
         return false;
@@ -253,14 +336,16 @@ bool VideoEncoderNetint::InitCtxParams()
     const std::string lowDelayOpt = "lowDelay";
     const std::string rateControlOpt = "RcEnable";
     const std::string profileOpt = "profile";
+    const std::string lowDelayPocTypeOpt = "useLowDelayPocType";
     const std::string noBframeOption = "2";
     const std::string enableOption = "1";
-    const std::string baselineOption = "1";
+
     std::unordered_map<std::string, std::string> xcoderParams = {
-        { gopPresetOpt, noBframeOption },  // GOP: IPPP...
-        { lowDelayOpt, enableOption },     // enable low delay mode
-        { rateControlOpt, enableOption },  // rate control enable
-        { profileOpt, baselineOption }     // profile: Baseline(h.264), Main(h.265)
+        { gopPresetOpt, noBframeOption },   // GOP: IPPP...
+        { lowDelayOpt, enableOption },      // enable low delay mode
+        { rateControlOpt, enableOption },   // rate control enable
+        { profileOpt, m_encParams.profile },     // profile: Baseline(h.264), Main(h.265)
+        { lowDelayPocTypeOpt, enableOption} // enable lowDelayPoc
     };
     auto encParamsSetValue = reinterpret_cast<NiEncParamsSetValueFunc>(g_funcMap[NI_ENCODER_PARAMS_SET_VALUE]);
     for (const auto &xParam : xcoderParams) {
@@ -283,7 +368,7 @@ bool VideoEncoderNetint::InitCtxParams()
             m_height, m_heightAlign, m_niEncParams.hevc_enc_params.conf_win_bottom);
         m_niEncParams.source_height = m_heightAlign;
     }
-    m_niEncParams.hevc_enc_params.intra_period = m_encParams.gopSize;
+    m_niEncParams.hevc_enc_params.intra_period = m_encParams.gopsize;
     return true;
 }
 
@@ -301,12 +386,36 @@ EncoderRetCode VideoEncoderNetint::EncodeOneFrame(const uint8_t *inputData, uint
         ERR("input size error: size(%u) < frame size(%u)", inputSize, frameSize);
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
+
+    std::string isParamChange = GetStrEncParam( "persist.vmi.video.encode.param_adjusting");
+    if (isParamChange == "1") {
+        if ((!GetRoEncParam()) || (!GetPersistEncParam())) {
+            ERR("init encoder failed: GetEncParam failed");
+            return VIDEO_ENCODER_INIT_FAIL;
+        }
+        SetEncodeParams();
+        SetEncParam("persist.vmi.video.encode.param_adjusting", "0");
+    } else if (isParamChange != "0") {
+        WARN("Invalid property value[%s] for encode param adjusting", isParamChange.c_str());
+        SetEncParam("persist.vmi.video.encode.param_adjusting", "0");
+    }
+
     if (m_resetFlag) {
         if (ResetEncoder() != VIDEO_ENCODER_SUCCESS) {
             ERR("reset encoder failed while encoding");
             return VIDEO_ENCODER_ENCODE_FAIL;
         }
         m_resetFlag = false;
+    }
+
+    std::string isKeyframeChange = GetStrEncParam("persist.vmi.video.encode.keyframe");
+    if (isKeyframeChange == "1") {
+        INFO("Encoder set key frame");
+        ForceKeyFrame();
+        SetEncParam("persist.vmi.video.encode.keyframe", "0");
+    } else if (isKeyframeChange != "0") {
+        WARN("Invalid property value[%s] for property[keyFrame], set to [0]", isKeyframeChange.c_str());
+        SetEncParam("persist.vmi.video.encode.keyframe", "0");
     }
 
     if (!InitFrameData(inputData)) {
@@ -403,51 +512,107 @@ EncoderRetCode VideoEncoderNetint::StopEncoder()
     return VIDEO_ENCODER_SUCCESS;
 }
 
+void VideoEncoderNetint::CheckFuncPtr()
+{
+    for (auto &symbol : g_funcMap) {
+        if (symbol.second == nullptr) {
+            m_FunPtrError = true;
+            ERR("%s ptr is nullptr", symbol.first.c_str());
+        }
+    }
+}
+
 void VideoEncoderNetint::DestroyEncoder()
 {
-    DBG("destroy encoder start");
+    if (!m_isInited) {
+        INFO("Destroy encoder already triggered, return");
+        return;
+    }
+    INFO("destroy encoder start");
     if (g_libHandle == nullptr) {
         WARN("encoder has been destroyed");
         return;
     }
-    auto deviceSessionClose = reinterpret_cast<NiDeviceSessionCloseFunc>(g_funcMap[NI_DEVICE_SESSION_CLOSE]);
-    ni_retcode_t ret = (*deviceSessionClose)(&m_sessionCtx, 1, NI_DEVICE_TYPE_ENCODER);
-    if (ret != NI_RETCODE_SUCCESS) {
-        WARN("device session close failed: ret = %d", ret);
+    CheckFuncPtr();
+    ni_retcode_t ret;
+    if (g_funcMap[NI_DEVICE_SESSION_CLOSE] != nullptr) {
+        auto deviceSessionClose = reinterpret_cast<NiDeviceSessionCloseFunc>(g_funcMap[NI_DEVICE_SESSION_CLOSE]);
+        ret = (*deviceSessionClose)(&m_sessionCtx, 1, NI_DEVICE_TYPE_ENCODER);
+        if (ret != NI_RETCODE_SUCCESS) {
+            WARN("device session close failed: ret = %d", ret);
+        }
     }
-    if (m_devCtx != nullptr) {
+    if (g_funcMap[NI_DEVICE_CLOSE] != nullptr) {
         auto deviceClose = reinterpret_cast<NiDeviceCloseFunc>(g_funcMap[NI_DEVICE_CLOSE]);
         (*deviceClose)(m_sessionCtx.device_handle);
         (*deviceClose)(m_sessionCtx.blk_io_handle);
-        DBG("destroy rsrc start");
-        auto rsrcReleaseResource = reinterpret_cast<NiRsrcReleaseResourceFunc>(g_funcMap[NI_RSRC_RELEASE_RESOURCE]);
-        (*rsrcReleaseResource)(m_devCtx, m_codec, m_load);
-        auto rsrcFreeDeviceContext =
+    }
+    if (m_devCtx != nullptr) {
+        INFO("destroy rsrc start");
+        if (g_funcMap[NI_RSRC_RELEASE_RESOURCE] != nullptr) {
+            auto rsrcReleaseResource = reinterpret_cast<NiRsrcReleaseResourceFunc>(g_funcMap[NI_RSRC_RELEASE_RESOURCE]);
+            (*rsrcReleaseResource)(m_devCtx, m_codec, m_load);
+        }
+        if (g_funcMap[NI_RSRC_FREE_DEVICE_CONTEXT] != nullptr) {
+            auto rsrcFreeDeviceContext =
             reinterpret_cast<NiRsrcFreeDeviceContextFunc>(g_funcMap[NI_RSRC_FREE_DEVICE_CONTEXT]);
-        (*rsrcFreeDeviceContext)(m_devCtx);
+            (*rsrcFreeDeviceContext)(m_devCtx);
+        }
         m_devCtx = nullptr;
-        DBG("destroy rsrc done");
+        INFO("destroy rsrc done");
     }
-    auto deviceSessionContextFree =
-        reinterpret_cast<NiDeviceSessionContextFreeFunc>(g_funcMap[NI_DEVICE_SESSION_CONTEXT_FREE]);
-    (*deviceSessionContextFree)(&m_sessionCtx);
-    auto frameBufferFree = reinterpret_cast<NiFrameBufferFreeFunc>(g_funcMap[NI_FRAME_BUFFER_FREE]);
-    ret = (*frameBufferFree)(&(m_frame.data.frame));
-    if (ret != NI_RETCODE_SUCCESS) {
-        WARN("device session close failed: ret = %d", ret);
+    if (g_funcMap[NI_DEVICE_SESSION_CONTEXT_FREE] != nullptr) {
+        auto deviceSessionContextFree =
+            reinterpret_cast<NiDeviceSessionContextFreeFunc>(g_funcMap[NI_DEVICE_SESSION_CONTEXT_FREE]);
+        (*deviceSessionContextFree)(&m_sessionCtx);
     }
-    auto packetBufferFree = reinterpret_cast<NiPacketBufferFreeFunc>(g_funcMap[NI_PACKET_BUFFER_FREE]);
-    ret = (*packetBufferFree)(&(m_packet.data.packet));
-    if (ret != NI_RETCODE_SUCCESS) {
-        WARN("device session close failed: ret = %d", ret);
+    if (g_funcMap[NI_FRAME_BUFFER_FREE] != nullptr) {
+        auto frameBufferFree = reinterpret_cast<NiFrameBufferFreeFunc>(g_funcMap[NI_FRAME_BUFFER_FREE]);
+        ret = (*frameBufferFree)(&(m_frame.data.frame));
+        if (ret != NI_RETCODE_SUCCESS) {
+            WARN("device session close failed: ret = %d", ret);
+        }
     }
+    if (g_funcMap[NI_PACKET_BUFFER_FREE] != nullptr) {
+        auto packetBufferFree = reinterpret_cast<NiPacketBufferFreeFunc>(g_funcMap[NI_PACKET_BUFFER_FREE]);
+        ret = (*packetBufferFree)(&(m_packet.data.packet));
+        if (ret != NI_RETCODE_SUCCESS) {
+            WARN("device session close failed: ret = %d", ret);
+        }
+    }
+    if (m_FunPtrError) {
+        UnLoadNetintSharedLib();
+    }
+    m_isInited = false;
     INFO("destroy encoder done");
+}
+
+void VideoEncoderNetint::UnLoadNetintSharedLib()
+{
+    INFO("UnLoadNetintSharedLib");
+    for (auto &symbol : g_funcMap) {
+        symbol.second = nullptr;
+    }
+    (void)dlclose(g_libHandle);
+    g_libHandle = nullptr;
+    g_netintLoaded = false;
+    m_FunPtrError = false;
 }
 
 EncoderRetCode VideoEncoderNetint::ResetEncoder()
 {
     INFO("resetting encoder");
-
+    DestroyEncoder();
+    EncoderRetCode ret = InitEncoder();
+    if (ret != VIDEO_ENCODER_SUCCESS) {
+        ERR("init encoder failed %#x while resetting", ret);
+        return VIDEO_ENCODER_RESET_FAIL;
+    }
+    ret = StartEncoder();
+    if (ret != VIDEO_ENCODER_SUCCESS) {
+        ERR("start encoder failed %#x while resetting", ret);
+        return VIDEO_ENCODER_RESET_FAIL;
+    }
     INFO("reset encoder success");
     return VIDEO_ENCODER_SUCCESS;
 }
@@ -458,17 +623,16 @@ EncoderRetCode VideoEncoderNetint::ForceKeyFrame()
     return VIDEO_ENCODER_SUCCESS;
 }
 
-EncoderRetCode VideoEncoderNetint::SetEncodeParams(const EncodeParams &encParams)
+EncoderRetCode VideoEncoderNetint::SetEncodeParams()
 {
-    if (encParams == m_encParams) {
-        WARN("encode params are not changed");
-        return VIDEO_ENCODER_SUCCESS;
+    if (EncodeParamsChange()) {
+        m_encParams = m_tmpEncParams;
+        m_resetFlag = true;
+        INFO("Handle encoder config change: [bitrate, gopsize, profile] = [%u,%u,%s]",
+            m_encParams.bitrate, m_encParams.gopsize, m_encParams.profile.c_str());
+    } else {
+        INFO("Using encoder config: [bitrate, gopsize, profile] = [%u,%u,%s]",
+            m_encParams.bitrate, m_encParams.gopsize, m_encParams.profile.c_str());
     }
-    if (!VerifyEncodeParams(encParams)) {
-        ERR("encoder params is not supported");
-        return VIDEO_ENCODER_SET_ENCODE_PARAMS_FAIL;
-    }
-    m_encParams = encParams;
-    m_resetFlag = true;
     return VIDEO_ENCODER_SUCCESS;
 }

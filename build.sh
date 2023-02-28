@@ -1,5 +1,5 @@
 #!/bin/bash
-# libVideoCodec的aosp构建脚本
+# libVideoCodec的构建脚本
 
 cur_file_path=$(cd $(dirname "${0}");pwd)
 
@@ -25,12 +25,8 @@ so_list=(
     vendor/lib64/libVideoCodec.so
 )
 
-setup_env()
+android9_link()
 {
-    export TOP=${AN_AOSPDIR}
-    export OUT_DIR=${AN_AOSPDIR}/out
-    export ANDROID_BUILD_TOP=${AN_AOSPDIR}
-    cd ${cur_file_path}/..
     root_dir=$(pwd)
     for link_dir in ${link_dirs[*]}
     do
@@ -39,6 +35,22 @@ setup_env()
         ln -vs ${root_dir}/${link_dir} ${AN_AOSPDIR}
         [ ${?} != 0 ] && error "failed to link ${link_dir} to ${AN_AOSPDIR}" && retrun -1
     done
+}
+
+setup_env()
+{
+    export TOP=${AN_AOSPDIR}
+    export OUT_DIR=${AN_AOSPDIR}/out
+    export ANDROID_BUILD_TOP=${AN_AOSPDIR}
+    cd ${cur_file_path}/..
+    if [ -z "${ANDROID_VERSION}" ];then
+        android9_link
+    else
+        for link_dir in ${link_dirs[*]}
+        do
+            rsync -azr --delete --exclude=".git" ${link_dir} ${AN_AOSPDIR}
+        done
+    fi
     cd -
 }
 
@@ -100,7 +112,7 @@ inc()
     cd ${AN_AOSPDIR}
     source build/envsetup.sh
     lunch aosp_arm64-eng
-    mmm ${source_dirs} showcommands -j
+    mmm ${source_dirs} -j
     [ ${?} != 0 ] && error "failed to incremental compile ${source_dirs}" && return -1
     cd -
     package

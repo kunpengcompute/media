@@ -143,6 +143,7 @@ EncoderRetCode VideoEncoderNetint::InitEncoder(const EncodeParams &encParams)
         return VIDEO_ENCODER_INIT_FAIL;
     }
     m_frame.data.frame.start_of_stream = 1;
+    m_isInited = true;
     INFO("init encoder success");
     return VIDEO_ENCODER_SUCCESS;
 }
@@ -240,8 +241,9 @@ bool VideoEncoderNetint::InitCodec()
 
 bool VideoEncoderNetint::InitCtxParams()
 {
-    const uint32_t defaultBitrate =
-        (m_codec == EN_H264) ? 5000000 : 3000000;  // h.264: 5Mbps, h.265: 3Mbps
+    const uint32_t defaultBitrate = (m_encParams.frameRate == 30) ? ((m_codec == EN_H264) ? 5000000 : 3000000) :
+        ((m_codec == EN_H264) ? 10000000 : 6000000);
+        // h.264 30fps: 5Mbps, h.264 60fps: 10Mbps, h.265 30fps: 3Mbps, h.265 60fps: 6Mbps
     auto encInitDefaultParams = reinterpret_cast<NiEncInitDefaultParamsFunc>(g_funcMap[NI_ENCODER_INIT_DEFAULT_PARAMS]);
     ni_retcode_t ret = (*encInitDefaultParams)(&m_niEncParams, m_encParams.frameRate, 1,
         defaultBitrate, m_encParams.width, m_encParams.height);
@@ -253,14 +255,16 @@ bool VideoEncoderNetint::InitCtxParams()
     const std::string lowDelayOpt = "lowDelay";
     const std::string rateControlOpt = "RcEnable";
     const std::string profileOpt = "profile";
+    const std::string lowDelayPocTypeOpt = "useLowDelayPocType";
     const std::string noBframeOption = "2";
     const std::string enableOption = "1";
     const std::string baselineOption = "1";
     std::unordered_map<std::string, std::string> xcoderParams = {
-        { gopPresetOpt, noBframeOption },  // GOP: IPPP...
-        { lowDelayOpt, enableOption },     // enable low delay mode
-        { rateControlOpt, enableOption },  // rate control enable
-        { profileOpt, baselineOption }     // profile: Baseline(h.264), Main(h.265)
+        { gopPresetOpt, noBframeOption },   // GOP: IPPP...
+        { lowDelayOpt, enableOption },      // enable low delay mode
+        { rateControlOpt, enableOption },   // rate control enable
+        { profileOpt, baselineOption },     // profile: Baseline(h.264), Main(h.265)
+        { lowDelayPocTypeOpt, enableOption} // enable lowDelayPoc
     };
     auto encParamsSetValue = reinterpret_cast<NiEncParamsSetValueFunc>(g_funcMap[NI_ENCODER_PARAMS_SET_VALUE]);
     for (const auto &xParam : xcoderParams) {
@@ -403,51 +407,107 @@ EncoderRetCode VideoEncoderNetint::StopEncoder()
     return VIDEO_ENCODER_SUCCESS;
 }
 
+void VideoEncoderNetint::CheckFuncPtr()
+{
+    for (auto &symbol : g_funcMap) {
+        if (symbol.second == nullptr) {
+            m_FunPtrError = true;
+            ERR("%s ptr is nullptr", symbol.first.c_str());
+        }
+    }
+}
+
 void VideoEncoderNetint::DestroyEncoder()
 {
-    DBG("destroy encoder start");
+    if (!m_isInited) {
+        INFO("Destroy encoder already triggered, return");
+        return;
+    }
+    INFO("destroy encoder start");
     if (g_libHandle == nullptr) {
         WARN("encoder has been destroyed");
         return;
     }
-    auto deviceSessionClose = reinterpret_cast<NiDeviceSessionCloseFunc>(g_funcMap[NI_DEVICE_SESSION_CLOSE]);
-    ni_retcode_t ret = (*deviceSessionClose)(&m_sessionCtx, 1, NI_DEVICE_TYPE_ENCODER);
-    if (ret != NI_RETCODE_SUCCESS) {
-        WARN("device session close failed: ret = %d", ret);
+    CheckFuncPtr();
+    ni_retcode_t ret;
+    if (g_funcMap[NI_DEVICE_SESSION_CLOSE] != nullptr) {
+        auto deviceSessionClose = reinterpret_cast<NiDeviceSessionCloseFunc>(g_funcMap[NI_DEVICE_SESSION_CLOSE]);
+        ret = (*deviceSessionClose)(&m_sessionCtx, 1, NI_DEVICE_TYPE_ENCODER);
+        if (ret != NI_RETCODE_SUCCESS) {
+            WARN("device session close failed: ret = %d", ret);
+        }
     }
-    if (m_devCtx != nullptr) {
+    if (g_funcMap[NI_DEVICE_CLOSE] != nullptr) {
         auto deviceClose = reinterpret_cast<NiDeviceCloseFunc>(g_funcMap[NI_DEVICE_CLOSE]);
         (*deviceClose)(m_sessionCtx.device_handle);
         (*deviceClose)(m_sessionCtx.blk_io_handle);
-        DBG("destroy rsrc start");
-        auto rsrcReleaseResource = reinterpret_cast<NiRsrcReleaseResourceFunc>(g_funcMap[NI_RSRC_RELEASE_RESOURCE]);
-        (*rsrcReleaseResource)(m_devCtx, m_codec, m_load);
-        auto rsrcFreeDeviceContext =
+    }
+    if (m_devCtx != nullptr) {
+        INFO("destroy rsrc start");
+        if (g_funcMap[NI_RSRC_RELEASE_RESOURCE] != nullptr) {
+            auto rsrcReleaseResource = reinterpret_cast<NiRsrcReleaseResourceFunc>(g_funcMap[NI_RSRC_RELEASE_RESOURCE]);
+            (*rsrcReleaseResource)(m_devCtx, m_codec, m_load);
+        }
+        if (g_funcMap[NI_RSRC_FREE_DEVICE_CONTEXT] != nullptr) {
+            auto rsrcFreeDeviceContext =
             reinterpret_cast<NiRsrcFreeDeviceContextFunc>(g_funcMap[NI_RSRC_FREE_DEVICE_CONTEXT]);
-        (*rsrcFreeDeviceContext)(m_devCtx);
+            (*rsrcFreeDeviceContext)(m_devCtx);
+        }
         m_devCtx = nullptr;
-        DBG("destroy rsrc done");
+        INFO("destroy rsrc done");
     }
-    auto deviceSessionContextFree =
-        reinterpret_cast<NiDeviceSessionContextFreeFunc>(g_funcMap[NI_DEVICE_SESSION_CONTEXT_FREE]);
-    (*deviceSessionContextFree)(&m_sessionCtx);
-    auto frameBufferFree = reinterpret_cast<NiFrameBufferFreeFunc>(g_funcMap[NI_FRAME_BUFFER_FREE]);
-    ret = (*frameBufferFree)(&(m_frame.data.frame));
-    if (ret != NI_RETCODE_SUCCESS) {
-        WARN("device session close failed: ret = %d", ret);
+    if (g_funcMap[NI_DEVICE_SESSION_CONTEXT_FREE] != nullptr) {
+        auto deviceSessionContextFree =
+            reinterpret_cast<NiDeviceSessionContextFreeFunc>(g_funcMap[NI_DEVICE_SESSION_CONTEXT_FREE]);
+        (*deviceSessionContextFree)(&m_sessionCtx);
     }
-    auto packetBufferFree = reinterpret_cast<NiPacketBufferFreeFunc>(g_funcMap[NI_PACKET_BUFFER_FREE]);
-    ret = (*packetBufferFree)(&(m_packet.data.packet));
-    if (ret != NI_RETCODE_SUCCESS) {
-        WARN("device session close failed: ret = %d", ret);
+    if (g_funcMap[NI_FRAME_BUFFER_FREE] != nullptr) {
+        auto frameBufferFree = reinterpret_cast<NiFrameBufferFreeFunc>(g_funcMap[NI_FRAME_BUFFER_FREE]);
+        ret = (*frameBufferFree)(&(m_frame.data.frame));
+        if (ret != NI_RETCODE_SUCCESS) {
+            WARN("device session close failed: ret = %d", ret);
+        }
     }
+    if (g_funcMap[NI_PACKET_BUFFER_FREE] != nullptr) {
+        auto packetBufferFree = reinterpret_cast<NiPacketBufferFreeFunc>(g_funcMap[NI_PACKET_BUFFER_FREE]);
+        ret = (*packetBufferFree)(&(m_packet.data.packet));
+        if (ret != NI_RETCODE_SUCCESS) {
+            WARN("device session close failed: ret = %d", ret);
+        }
+    }
+    if (m_FunPtrError) {
+        UnLoadNetintSharedLib();
+    }
+    m_isInited = false;
     INFO("destroy encoder done");
+}
+
+void VideoEncoderNetint::UnLoadNetintSharedLib()
+{
+    INFO("UnLoadNetintSharedLib");
+    for (auto &symbol : g_funcMap) {
+        symbol.second = nullptr;
+    }
+    (void)dlclose(g_libHandle);
+    g_libHandle = nullptr;
+    g_netintLoaded = false;
+    m_FunPtrError = false;
 }
 
 EncoderRetCode VideoEncoderNetint::ResetEncoder()
 {
     INFO("resetting encoder");
-
+    DestroyEncoder();
+    EncoderRetCode ret = InitEncoder(m_encParams);
+    if (ret != VIDEO_ENCODER_SUCCESS) {
+        ERR("init encoder failed %#x while resetting", ret);
+        return VIDEO_ENCODER_RESET_FAIL;
+    }
+    ret = StartEncoder();
+    if (ret != VIDEO_ENCODER_SUCCESS) {
+        ERR("start encoder failed %#x while resetting", ret);
+        return VIDEO_ENCODER_RESET_FAIL;
+    }
     INFO("reset encoder success");
     return VIDEO_ENCODER_SUCCESS;
 }

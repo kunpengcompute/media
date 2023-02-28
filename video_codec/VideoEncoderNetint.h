@@ -133,6 +133,16 @@ private:
      */
     bool InitFrameData(const uint8_t *src);
 
+    /**
+     * @功能描述: 卸载NETINT动态库
+     */
+    void UnLoadNetintSharedLib();
+
+    /**
+     * @功能描述: 检查map中函数指针是否存在空指针
+     */
+    void CheckFuncPtr();
+
     ni_codec_t m_codec = EN_H264;
     EncodeParams m_encParams = {};
     std::atomic<bool> m_resetFlag = { false };
@@ -146,6 +156,8 @@ private:
     int m_widthAlign = DEFAULT_WIDTH;
     int m_heightAlign = DEFAULT_HEIGHT;
     unsigned long m_load = 0;
+    bool m_FunPtrError = false;
+    bool m_isInited = false;
 };
 
 #endif  // VIDEO_ENCODER_NETINT_H

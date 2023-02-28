@@ -12,16 +12,14 @@ LOCAL_LDFLAGS := -Wformat -Wl,--build-id=none -Wl,-z,relro -fPIE -Wl,-z,now,-z,n
 LOCAL_SRC_FILES := \
     VideoCodecApi.cpp \
     VideoEncoderOpenH264.cpp \
-    VideoEncoderNetint.cpp \
-    VideoEncoderVpe.cpp
+    VideoEncoderNetint.cpp
 
 LOCAL_C_INCLUDES := \
     $(LOCAL_PATH) \
     system/core/liblog/include \
     $(COMMON_DIR)/log \
     $(VENDOR_DIR)/openh264 \
-    $(VENDOR_DIR)/netint \
-    $(VENDOR_DIR)/vpe
+    $(VENDOR_DIR)/netint
 
 LOCAL_SHARED_LIBRARIES := \
     liblog

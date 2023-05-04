@@ -4,18 +4,24 @@
 
 #define LOG_TAG "VideoCodecApi"
 #include "VideoCodecApi.h"
-#include "VideoEncoderOpenH264.h"
 #include "VideoEncoderNetint.h"
-#include "VideoEncoderVpe.h"
+#include "VideoEncoderOpenH264.h"
 #include "MediaLog.h"
+#include "Property.h"
 
-void RegisterMediaLogCallback(const MediaLogCallbackFunc logCallback)
-{
-    SetMediaLogCallback(logCallback);
+namespace {
+// 编码器类型
+enum EncoderType : uint32_t {
+    ENCODER_TYPE_OPENH264 = 0,    // 开源OpenH264编码器
+    ENCODER_TYPE_NETINTH264 = 1,  // NETINT h.264硬件编码器
+    ENCODER_TYPE_NETINTH265 = 2   // NETINT h.265硬件编码器
+};
 }
 
-EncoderRetCode CreateVideoEncoder(uint32_t encType, VideoEncoder** encoder)
+EncoderRetCode CreateVideoEncoder(VideoEncoder **encoder)
 {
+    uint32_t encType = GetIntEncParam("ro.vmi.demo.video.encode.format");
+    INFO("create video encoder: encoder type %u", encType);
     switch (encType) {
         case ENCODER_TYPE_OPENH264:
             *encoder = new (std::nothrow) VideoEncoderOpenH264();
@@ -25,12 +31,6 @@ EncoderRetCode CreateVideoEncoder(uint32_t encType, VideoEncoder** encoder)
             break;
         case ENCODER_TYPE_NETINTH265:
             *encoder = new (std::nothrow) VideoEncoderNetint(NI_CODEC_TYPE_H265);
-            break;
-        case ENCODER_TYPE_VPEH264:
-            *encoder = new (std::nothrow) VideoEncoderVpe(CODEC_ID_H264);
-            break;
-        case ENCODER_TYPE_VPEH265:
-            *encoder = new (std::nothrow) VideoEncoderVpe(CODEC_ID_HEVC);
             break;
         default:
             ERR("create video encoder failed: unknown encoder type %u", encType);
@@ -43,37 +43,13 @@ EncoderRetCode CreateVideoEncoder(uint32_t encType, VideoEncoder** encoder)
     return VIDEO_ENCODER_SUCCESS;
 }
 
-
-EncoderRetCode DestroyVideoEncoder(uint32_t encType, VideoEncoder* encoder)
+EncoderRetCode DestroyVideoEncoder(VideoEncoder *encoder)
 {
     if (encoder == nullptr) {
         WARN("input encoder is null");
         return VIDEO_ENCODER_SUCCESS;
     }
-    VideoEncoderOpenH264 *openH264 = nullptr;
-    VideoEncoderNetint *netint = nullptr;
-    VideoEncoderVpe *vpe = nullptr;
-    switch (encType) {
-        case ENCODER_TYPE_OPENH264:
-            openH264 = static_cast<VideoEncoderOpenH264 *>(encoder);
-            delete openH264;
-            openH264 = nullptr;
-            break;
-        case ENCODER_TYPE_NETINTH264:
-        case ENCODER_TYPE_NETINTH265:
-            netint = static_cast<VideoEncoderNetint *>(encoder);
-            delete netint;
-            netint = nullptr;
-            break;
-        case ENCODER_TYPE_VPEH264:
-        case ENCODER_TYPE_VPEH265:
-            vpe = static_cast<VideoEncoderVpe *>(encoder);
-            delete vpe;
-            vpe = nullptr;
-            break;
-        default:
-            ERR("destroy video encoder failed: unknown encoder type %u", encType);
-            return VIDEO_ENCODER_DESTROY_FAIL;
-    }
+    delete encoder;
+    encoder = nullptr;
     return VIDEO_ENCODER_SUCCESS;
 }

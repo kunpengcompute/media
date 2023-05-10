@@ -15,24 +15,25 @@
 
 namespace MediaCore {
 namespace {
-    const std::string NI_DECODER_INIT_DEFAULT_PARAMS = "ni_logan_decoder_init_default_params";
-    const std::string NI_RSRC_ALLOCATE_AUTO          = "ni_logan_rsrc_allocate_auto";
-    const std::string NI_RSRC_RELEASE_RESOURCE       = "ni_logan_rsrc_release_resource";
-    const std::string NI_RSRC_FREE_DEVICE_CONTEXT    = "ni_logan_rsrc_free_device_context";
-    const std::string NI_DEVICE_OPEN                 = "ni_logan_device_open";
-    const std::string NI_DEVICE_CLOSE                = "ni_logan_device_close";
-    const std::string NI_DEVICE_SESSION_CONTEXT_INIT = "ni_logan_device_session_context_init";
-    const std::string NI_DEVICE_SESSION_OPEN         = "ni_logan_device_session_open";
-    const std::string NI_DEVICE_SESSION_READ         = "ni_logan_device_session_read";
-    const std::string NI_DEVICE_SESSION_FLUSH        = "ni_logan_device_session_flush";
-    const std::string NI_DEVICE_DEC_SESSION_FLUSH    = "ni_logan_device_dec_session_flush";
-    const std::string NI_DEVICE_DEC_SESSION_WRITE    = "ni_logan_device_session_write";
-    const std::string NI_DEVICE_SESSION_CLOSE        = "ni_logan_device_session_close";
-    const std::string NI_PACKET_BUFFER_ALLOC         = "ni_logan_packet_buffer_alloc";
-    const std::string NI_PACKET_COPY                 = "ni_logan_packet_copy";
-    const std::string NI_PACKET_BUFFER_FREE          = "ni_logan_packet_buffer_free";
-    const std::string NI_DECODER_FRAME_BUFFER_ALLOC  = "ni_logan_decoder_frame_buffer_alloc";
-    const std::string NI_DECODER_FRAME_BUFFER_FREE   = "ni_logan_decoder_frame_buffer_free";
+    const std::string NI_DECODER_INIT_DEFAULT_PARAMS  = "ni_logan_decoder_init_default_params";
+    const std::string NI_RSRC_ALLOCATE_AUTO           = "ni_logan_rsrc_allocate_auto";
+    const std::string NI_RSRC_RELEASE_RESOURCE        = "ni_logan_rsrc_release_resource";
+    const std::string NI_RSRC_FREE_DEVICE_CONTEXT     = "ni_logan_rsrc_free_device_context";
+    const std::string NI_DEVICE_OPEN                  = "ni_logan_device_open";
+    const std::string NI_DEVICE_CLOSE                 = "ni_logan_device_close";
+    const std::string NI_DEVICE_SESSION_CONTEXT_INIT  = "ni_logan_device_session_context_init";
+    const std::string NI_DEVICE_SESSION_OPEN          = "ni_logan_device_session_open";
+    const std::string NI_DEVICE_SESSION_READ          = "ni_logan_device_session_read";
+    const std::string NI_DEVICE_SESSION_FLUSH         = "ni_logan_device_session_flush";
+    const std::string NI_DEVICE_DEC_SESSION_FLUSH     = "ni_logan_device_dec_session_flush";
+    const std::string NI_DEVICE_DEC_SESSION_SAVE_HDRS = "ni_logan_device_dec_session_save_hdrs";
+    const std::string NI_DEVICE_SESSION_WRITE         = "ni_logan_device_session_write";
+    const std::string NI_DEVICE_SESSION_CLOSE         = "ni_logan_device_session_close";
+    const std::string NI_PACKET_BUFFER_ALLOC          = "ni_logan_packet_buffer_alloc";
+    const std::string NI_PACKET_COPY                  = "ni_logan_packet_copy";
+    const std::string NI_PACKET_BUFFER_FREE           = "ni_logan_packet_buffer_free";
+    const std::string NI_DECODER_FRAME_BUFFER_ALLOC   = "ni_logan_decoder_frame_buffer_alloc";
+    const std::string NI_DECODER_FRAME_BUFFER_FREE    = "ni_logan_decoder_frame_buffer_free";
 
     using NiDecInitDefaultParamsFunc = ni_logan_retcode_t (*)(ni_logan_encoder_params_t *param, int fpsNum,
         int fpsDenom, long bitRate, int width, int height);
@@ -52,8 +53,10 @@ namespace {
     using NiDeviceSessionFlushFunc = ni_logan_retcode_t (*)(ni_logan_session_context_t *sessionCtx,
         ni_logan_device_type_t devType);
     using NiDeviceDecSessionFlushFunc = ni_logan_retcode_t (*)(ni_logan_session_context_t *sessionCtx);
-    using NiDeviceDecSessionWriteFunc = int (*)(ni_logan_session_context_t *sessionCtx,
-        ni_logan_session_data_io_t *data, ni_logan_device_type_t device_type);
+    using NiDeviceDecSessionSaveHdrsFunc =
+        ni_logan_retcode_t (*)(ni_logan_session_context_t *sessionCtx, uint8_t *hdrData, uint8_t hdrSize);
+    using NiDeviceSessionWriteFunc = int (*)(ni_logan_session_context_t *sessionCtx,
+        ni_logan_session_data_io_t *data, ni_logan_device_type_t devType);
     using NiDeviceSessionCloseFunc =
         ni_logan_retcode_t (*)(ni_logan_session_context_t *sessionCtx, int eosRecieved, ni_logan_device_type_t devType);
 
@@ -78,7 +81,8 @@ namespace {
         { NI_DEVICE_SESSION_READ, nullptr },
         { NI_DEVICE_SESSION_FLUSH, nullptr },
         { NI_DEVICE_DEC_SESSION_FLUSH, nullptr },
-        { NI_DEVICE_DEC_SESSION_WRITE, nullptr },
+        { NI_DEVICE_DEC_SESSION_SAVE_HDRS, nullptr },
+        { NI_DEVICE_SESSION_WRITE, nullptr },
         { NI_DEVICE_SESSION_CLOSE, nullptr },
         { NI_PACKET_BUFFER_ALLOC, nullptr },
         { NI_PACKET_COPY, nullptr },
@@ -87,10 +91,105 @@ namespace {
         { NI_DECODER_FRAME_BUFFER_FREE, nullptr }
     };
 
+    // H.264 NAL unit types in T-REC-H.264-201906
+    enum class H264NaluType {
+        UNSPECIFIED     = 0,
+        SLICE           = 1,
+        DPA             = 2,
+        DPB             = 3,
+        DPC             = 4,
+        IDR_SLICE       = 5,
+        SEI             = 6,
+        SPS             = 7,
+        PPS             = 8,
+        AUD             = 9,
+        END_SEQUENCE    = 10,
+        END_STREAM      = 11,
+        FILLER_DATA     = 12,
+        SPS_EXT         = 13,
+        PREFIX          = 14,
+        SUB_SPS         = 15,
+        DPS             = 16,
+        AUXILIARY_SLICE = 19,
+    };
+
+    // HEVC NAL unit types in T-REC-H.265-201906
+    enum class H265NaluType {
+        TRAIL_N        = 0,
+        TRAIL_R        = 1,
+        TSA_N          = 2,
+        TSA_R          = 3,
+        STSA_N         = 4,
+        STSA_R         = 5,
+        RADL_N         = 6,
+        RADL_R         = 7,
+        RASL_N         = 8,
+        RASL_R         = 9,
+        VCL_N10        = 10,
+        VCL_R11        = 11,
+        VCL_N12        = 12,
+        VCL_R13        = 13,
+        VCL_N14        = 14,
+        VCL_R15        = 15,
+        BLA_W_LP       = 16,
+        BLA_W_RADL     = 17,
+        BLA_N_LP       = 18,
+        IDR_W_RADL     = 19,
+        IDR_N_LP       = 20,
+        CRA_NUT        = 21,
+        RSV_IRAP_VCL22 = 22,
+        RSV_IRAP_VCL23 = 23,
+        RSV_VCL24      = 24,
+        RSV_VCL25      = 25,
+        RSV_VCL26      = 26,
+        RSV_VCL27      = 27,
+        RSV_VCL28      = 28,
+        RSV_VCL29      = 29,
+        RSV_VCL30      = 30,
+        RSV_VCL31      = 31,
+        VPS            = 32,
+        SPS            = 33,
+        PPS            = 34,
+        AUD            = 35,
+        EOS_NUT        = 36,
+        EOB_NUT        = 37,
+        FD_NUT         = 38,
+        SEI_PREFIX     = 39,
+        SEI_SUFFIX     = 40,
+        RSV_NVCL41     = 41,
+        RSV_NVCL42     = 42,
+        RSV_NVCL43     = 43,
+        RSV_NVCL44     = 44,
+        RSV_NVCL45     = 45,
+        RSV_NVCL46     = 46,
+        RSV_NVCL47     = 47,
+        UNSPEC48       = 48,
+        UNSPEC49       = 49,
+        UNSPEC50       = 50,
+        UNSPEC51       = 51,
+        UNSPEC52       = 52,
+        UNSPEC53       = 53,
+        UNSPEC54       = 54,
+        UNSPEC55       = 55,
+        UNSPEC56       = 56,
+        UNSPEC57       = 57,
+        UNSPEC58       = 58,
+        UNSPEC59       = 59,
+        UNSPEC60       = 60,
+        UNSPEC61       = 61,
+        UNSPEC62       = 62,
+        UNSPEC63       = 63,
+    };
+
     constexpr uint32_t NETINT_WIDTH_ALIGN = 32;
     constexpr uint32_t NETINT_HEIGHT_ALIGN_H264 = 16;
     constexpr uint32_t NETINT_HEIGHT_ALIGN_H265 = 8;
     constexpr long DEFAULT_BITRATE = 2000000; // 2Mbps
+    constexpr uint32_t NAL_START_CODE_MIN_LEN = 3;
+    constexpr uint32_t NAL_START_CODE_1ST_BYTE = 0;
+    constexpr uint32_t NAL_START_CODE_2ST_BYTE = 1;
+    constexpr uint32_t NAL_START_CODE_3ST_BYTE = 2;
+    constexpr uint32_t NAL_START_CODE_4ST_BYTE = 3;
     const std::string SHARED_LIB_NAME = "libxcoder_logan.so";
     std::atomic<bool> g_netintLoaded = { false };
     void *g_libHandle = nullptr;
@@ -488,9 +587,7 @@ DecoderRetCode VideoDecoderNetint::DecoderWriteData(const uint8_t *buffer, const
     }
 
     // 数据写入netint
-    auto deviceDecSessionWrite = reinterpret_cast<NiDeviceDecSessionWriteFunc>(g_funcMap[NI_DEVICE_DEC_SESSION_WRITE]);
-    int txSize = (*deviceDecSessionWrite)(&m_sessionCtx, &m_packet, NI_LOGAN_DEVICE_TYPE_DECODER);
-
+    int txSize = DeviceDecSessionWrite();
     if (txSize < 0) {
         ALOGE("decoder write data: sending data error. txSize:%d", txSize);
         (void) StopDecoder();
@@ -636,4 +733,130 @@ void VideoDecoderNetint::DestroyContext()
 
     ALOGI("destroy context done.");
 }
+
+int VideoDecoderNetint::DeviceDecSessionWrite()
+{
+    uint8_t streamHeaders[4 * 1024];   // 4 * 1024：4K足够大的内存存储码流头信息
+    uint8_t *hdr = streamHeaders;
+    uint8_t *buf = reinterpret_cast<uint8_t *>(m_packet.data.packet.p_data);
+    uint32_t dataSize = m_packet.data.packet.data_len;
+    int nalType = -1;
+    int headerSize = 0;
+    bool spsFound = false;
+    bool ppsFound = false;
+    bool vpsFound = false;
+    bool headersFound = false;
+
+    // parse the packet and when SPS/PPS/VPS are found, save/update the stream
+    // header info; stop searching as soon as VCL is encountered
+    int nalSize = FindNextNonVclNalu(std::pair<uint8_t*, uint32_t>(buf, dataSize), m_sessionCtx.codec_format, nalType);
+    while (dataSize > NAL_START_CODE_MIN_LEN && nalSize > 0) {
+        if (m_sessionCtx.codec_format == NI_LOGAN_CODEC_FORMAT_H264) {
+            spsFound = (spsFound || (nalType == static_cast<int>(H264NaluType::SPS)));
+            ppsFound = (ppsFound || (nalType == static_cast<int>(H264NaluType::PPS)));
+            headersFound = (headersFound || (spsFound && ppsFound));
+        } else if (m_sessionCtx.codec_format == NI_LOGAN_CODEC_FORMAT_H265) {
+            vpsFound = (vpsFound || (nalType == static_cast<int>(H265NaluType::VPS)));
+            spsFound = (spsFound || (nalType == static_cast<int>(H265NaluType::SPS)));
+            ppsFound = (ppsFound || (nalType == static_cast<int>(H265NaluType::PPS)));
+            headersFound = (headersFound || (vpsFound && spsFound && ppsFound));
+        }
+
+        if ((m_sessionCtx.codec_format == NI_LOGAN_CODEC_FORMAT_H264 &&
+            (nalType == static_cast<int>(H264NaluType::SPS) || nalType == static_cast<int>(H264NaluType::PPS))) ||
+            (m_sessionCtx.codec_format == NI_LOGAN_CODEC_FORMAT_H265 &&
+            (nalType == static_cast<int>(H265NaluType::VPS) || nalType == static_cast<int>(H265NaluType::SPS) ||
+            nalType == static_cast<int>(H265NaluType::PPS)))) {
+            headerSize += nalSize;
+            (void)std::copy_n(buf, nalSize, hdr);
+            hdr += nalSize;
+        }
+
+        buf += nalSize;
+        dataSize -= nalSize;
+
+        if (headersFound) {
+            auto deviceDecSessionSaveHdrs =
+                reinterpret_cast<NiDeviceDecSessionSaveHdrsFunc>(g_funcMap[NI_DEVICE_DEC_SESSION_SAVE_HDRS]);
+            ni_logan_retcode_t ret = (*deviceDecSessionSaveHdrs)(&m_sessionCtx, streamHeaders, headerSize);
+            if (ret != NI_LOGAN_RETCODE_SUCCESS) {
+                ALOGE("DeviceDecSessionWrite save hdrs failed: %d", ret);
+            }
+            break;
+        }
+        nalSize = FindNextNonVclNalu(std::pair<uint8_t*, uint32_t>(buf, dataSize), m_sessionCtx.codec_format, nalType);
+    }
+    auto deviceSessionWrite = reinterpret_cast<NiDeviceSessionWriteFunc>(g_funcMap[NI_DEVICE_SESSION_WRITE]);
+    int txSize = (*deviceSessionWrite)(&m_sessionCtx, &m_packet, NI_LOGAN_DEVICE_TYPE_DECODER);
+    return txSize;
+}
+
+int VideoDecoderNetint::FindNextNonVclNalu(std::pair<uint8_t*, uint32_t> inBuf, uint32_t codec, int &nalType)
+{
+    uint8_t *inData = inBuf.first;
+    uint32_t inSize = inBuf.second;
+    nalType = -1;
+
+    if (inSize <= NAL_START_CODE_MIN_LEN) {
+        return 0;
+    }
+
+    int i = FindNalStartCode(inBuf);
+    if (i == -1) {
+        return 0;
+    }
+
+    // found start code, advance to NAL unit start based on actual start code
+    if (inData[i + NAL_START_CODE_3ST_BYTE] != 0x01) {
+        i++;
+    }
+    i += NAL_START_CODE_MIN_LEN;
+
+    // get the NAL type
+    if (codec == NI_LOGAN_CODEC_FORMAT_H264) {
+        nalType = (inData[i] & 0x1f);
+        if (nalType >= static_cast<int>(H264NaluType::SLICE) &&
+            nalType <= static_cast<int>(H264NaluType::IDR_SLICE)) {
+            return 0;
+        }
+    } else if (codec == NI_LOGAN_CODEC_FORMAT_H265) {
+        nalType = (inData[i] >> 1);
+    } else {
+        ALOGE("Codec format is invalid");
+        return 0;
+    }
+
+    // advance to the end of NAL or stream
+    while ((inData[i + NAL_START_CODE_1ST_BYTE] != 0x00 || inData[i + NAL_START_CODE_2ST_BYTE] != 0x00 ||
+        inData[i + NAL_START_CODE_3ST_BYTE] != 0x00) &&
+        (inData[i + NAL_START_CODE_1ST_BYTE] != 0x00 || inData[i + NAL_START_CODE_2ST_BYTE] != 0x00 ||
+        inData[i + NAL_START_CODE_3ST_BYTE] != 0x01)) {
+        i++;
+        // if reaching/passing the stream end, return the whole data chunk size
+        if (i + NAL_START_CODE_MIN_LEN > inSize) {
+            return inSize;
+        }
+    }
+
+    return i;
+}
+
+int VideoDecoderNetint::FindNalStartCode(std::pair<uint8_t*, uint32_t> &inBuf)
+{
+    uint8_t *inData = inBuf.first;
+    uint32_t inSize = inBuf.second;
+    int i = 0;
+    // search for start code 0x000001 or 0x00000001
+    while ((inData[i + NAL_START_CODE_1ST_BYTE] != 0x00 || inData[i + NAL_START_CODE_2ST_BYTE] != 0x00 ||
+        inData[i + NAL_START_CODE_3ST_BYTE] != 0x01) &&
+        (inData[i + NAL_START_CODE_1ST_BYTE] != 0x00 || inData[i + NAL_START_CODE_2ST_BYTE] != 0x00 ||
+        inData[i + NAL_START_CODE_3ST_BYTE] != 0x00 || inData[i + NAL_START_CODE_4ST_BYTE] != 0x01)) {
+        i++;
+        if (i + NAL_START_CODE_MIN_LEN > inSize) {
+            return -1;
+        }
+    }
+    return i;
+}
+
 } // namespace MediaCore

@@ -111,6 +111,34 @@ private:
      */
     void DestroyContext();
 
+    /**
+    * @功能描述：发送码流数据到解码设备中，若数据包含码流头信息，将被保存在会话上下文中，
+    * 	   	    保证执行ni_logan_device_dec_session_flush后可以继续正常解码
+    * @返回值：成功返回写入设备的数据大小；失败则返回如下错误码：
+    *  	           NI_LOGAN_RETCODE_INVALID_PARAM
+    * 	           NI_LOGAN_RETCODE_ERROR_NVME_CMD_FAILED
+    * 	           NI_LOGAN_RETCODE_ERROR_INVALID_SESSION
+    */
+    int DeviceDecSessionWrite();
+    
+    /**
+    * @功能描述：扫描输入数据，找到下一个非VCL NAL单元（包含码流头信息）
+    * @参数 [in] inBuf：码流数据和大小
+    * @参数 [in] codec：编解码器类型（H.264或H.265）
+    * @参数 [out] nalType：NAL单元类型
+    * @返回值：成功返回NAL单元的数据大小（包含起始码）
+    *           失败则返回0
+    */
+    int FindNextNonVclNalu(std::pair<uint8_t*, uint32_t> inBuf, uint32_t codec, int &nalType);
+    
+    /**
+    * @功能描述：对输入码流数据查找NAL的起始码，并返回起始码所在位置
+    * @参数 [in] inBuf：码流数据和大小
+    * @返回值：成功返回NAL起始码的起始位置
+    *           失败则返回-1
+    */
+    int FindNalStartCode(std::pair<uint8_t*, uint32_t> &inBuf);
+    
     ni_codec_t m_codec = EN_H264;
     ni_logan_encoder_params_t m_decApiParams {};
     ni_logan_session_context_t m_sessionCtx {};

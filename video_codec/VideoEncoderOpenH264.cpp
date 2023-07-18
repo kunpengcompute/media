@@ -1,4 +1,5 @@
 /*
+ * 版权所有 (c) 华为技术有限公司 2021-2021
  * 功能说明: 适配OpenH264软件视频编码器，包括编码器初始化、启动、编码、停止、销毁等
  */
 
@@ -13,22 +14,11 @@
 #include "Property.h"
 
 namespace {
-    constexpr uint32_t WH_MIN = 16;
-    constexpr uint32_t WH_MAX = 4096;
-    constexpr uint32_t FRAMERATE_MIN = 30;
-    constexpr uint32_t FRAMERATE_MAX = 60;
-    constexpr uint32_t BITRATE_MIN = 1000000;
-    constexpr uint32_t BITRATE_MAX = 10000000;
-    constexpr uint32_t GOPSIZE_MIN = 30;
-    constexpr uint32_t GOPSIZE_MAX = 3000;
     constexpr uint32_t COMPRESS_RATIO = 2;
     constexpr uint32_t PRIMARY_COLOURS = 3;
 
     const std::string WELS_CREATE_SVC_ENCODER = "WelsCreateSVCEncoder";
     const std::string WELS_DESTROY_SVC_ENCODER = "WelsDestroySVCEncoder";
-    const std::string ENCODE_PROFILE_BASELINE = "baseline";
-    const std::string ENCODE_PROFILE_MAIN = "main";
-    const std::string ENCODE_PROFILE_HIGH = "high";
     /**
      * @功能描述: 创建编码器实例
      * @参数 [out] encoder: 编码器实例
@@ -59,75 +49,6 @@ VideoEncoderOpenH264::~VideoEncoderOpenH264()
     INFO("VideoEncoderOpenH264 destructor");
 }
 
-bool VideoEncoderOpenH264::GetRoEncParam()
-{
-    int32_t width = 0;
-    int32_t height = 0;
-    int32_t framerate = 0;
-    std::string phoneMode = GetStrEncParam("ro.sys.vmi.cloudphone");
-    if (phoneMode == "video") {
-        width = GetIntEncParam("ro.hardware.width");
-        height = GetIntEncParam("ro.hardware.height");
-        framerate = GetIntEncParam("ro.hardware.fps");
-    } else if (phoneMode == "instruction") {
-        width = GetIntEncParam("persist.vmi.demo.video.encode.width");
-        height = GetIntEncParam("persist.vmi.demo.video.encode.height");
-        framerate = GetIntEncParam("persist.vmi.demo.video.encode.framerate");
-    } else {
-        ERR("Invalid property value[%s] for property[ro.sys.vmi.cloudphone], get property failed!", phoneMode.c_str());
-        return false;
-    }
-
-    if (!VerifyEncodeRoParams(width, height, framerate)) {
-        ERR("encoder params is not supported");
-        return false;
-    }
-
-    m_tmpEncParams.width = width;
-    m_tmpEncParams.height = height;
-    m_tmpEncParams.framerate = framerate;
-    return true;
-}
-
-bool VideoEncoderOpenH264::GetPersistEncParam()
-{
-    std::string bitrate = "";
-    std::string gopsize = "";
-    std::string profile = "";
-    std::string phoneMode = GetStrEncParam("ro.sys.vmi.cloudphone");
-    if (phoneMode == "video") {
-        bitrate = GetStrEncParam("persist.vmi.video.encode.bitrate");
-        gopsize = GetStrEncParam("persist.vmi.video.encode.gopsize");
-        profile = GetStrEncParam("persist.vmi.video.encode.profile");
-    } else if (phoneMode == "instruction") {
-        bitrate = GetStrEncParam("persist.vmi.demo.video.encode.bitrate");
-        gopsize = GetStrEncParam("persist.vmi.demo.video.encode.gopsize");
-        profile = GetStrEncParam("persist.vmi.demo.video.encode.profile");
-    } else {
-        ERR("Invalid property value[%s] for property[ro.sys.vmi.cloudphone], get property failed!", phoneMode.c_str());
-        return false;
-    }
-
-    if (!VerifyEncodeParams(bitrate, gopsize, profile)) {
-        SetEncParam("persist.vmi.video.encode.bitrate", std::to_string(m_encParams.bitrate).c_str());
-        SetEncParam("persist.vmi.video.encode.gopsize", std::to_string(m_encParams.gopsize).c_str());
-        SetEncParam("persist.vmi.video.encode.profile", m_encParams.profile.c_str());
-    } else {
-        m_tmpEncParams.bitrate = StrToInt(bitrate);
-        m_tmpEncParams.gopsize = StrToInt(gopsize);
-        m_tmpEncParams.profile = profile;
-    }
-
-    return true;
-}
-
-bool VideoEncoderOpenH264::EncodeParamsChange()
-{
-    return (m_tmpEncParams.bitrate != m_encParams.bitrate) || (m_tmpEncParams.gopsize != m_encParams.gopsize)
-        || (m_tmpEncParams.profile != m_encParams.profile) || (m_tmpEncParams.width != m_encParams.width)
-        || (m_tmpEncParams.height != m_encParams.height) || (m_tmpEncParams.framerate != m_encParams.framerate);
-}
-
 EncoderRetCode VideoEncoderOpenH264::InitEncoder()
 {
     if ((!GetRoEncParam()) || (!GetPersistEncParam())) {
@@ -154,44 +75,6 @@ EncoderRetCode VideoEncoderOpenH264::InitEncoder()
     }
     INFO("init encoder success");
     return VIDEO_ENCODER_SUCCESS;
-}
-
-bool VideoEncoderOpenH264::VerifyEncodeRoParams(int32_t width, int32_t height, int32_t framerate)
-{
-    bool isEncodeParamsTrue = true;
-    if (width > (int32_t)WH_MAX || height > (int32_t)WH_MAX || width < (int32_t)WH_MIN || height < (int32_t)WH_MIN) {
-        ERR("Invalid property value[%dx%d] for property[width,height], get property failed!", width, height);
-        isEncodeParamsTrue = false;
-    }
-    if (framerate != FRAMERATE_MIN && framerate != FRAMERATE_MAX) {
-        ERR("Invalid property value[%d] for property[framerate], get property failed!", framerate);
-        isEncodeParamsTrue = false;
-    }
-    return isEncodeParamsTrue;
-}
-
-bool VideoEncoderOpenH264::VerifyEncodeParams(std::string &bitrate, std::string &gopsize, std::string &profile)
-{
-    bool isEncodeParamsTrue = true;
-    if ((StrToInt(bitrate) < (int32_t)BITRATE_MIN) || (StrToInt(bitrate) > (int32_t)BITRATE_MAX)) {
-        WARN("Invalid property value[%s] for property[bitrate], use last correct encode bitrate[%u]",
-            bitrate.c_str(), m_encParams.bitrate);
-        isEncodeParamsTrue = false;
-    }
-    if ((StrToInt(gopsize) < (int32_t)GOPSIZE_MIN) || (StrToInt(gopsize) > (int32_t)GOPSIZE_MAX)) {
-        WARN("Invalid property value[%s] for property[gopsize], use last correct encode gopsize[%u]",
-            gopsize.c_str(), m_encParams.gopsize);
-        isEncodeParamsTrue = false;
-    }
-    if (profile != ENCODE_PROFILE_BASELINE &&
-        profile != ENCODE_PROFILE_MAIN &&
-        profile != ENCODE_PROFILE_HIGH) {
-        WARN("Invalid property value[%s] for property[profile], use last correct encode profile[%s]",
-            profile.c_str(), m_encParams.profile.c_str());
-        isEncodeParamsTrue = false;
-    }
-
-    return isEncodeParamsTrue;
 }
 
 bool VideoEncoderOpenH264::LoadOpenH264SharedLib()
@@ -308,20 +191,12 @@ EncoderRetCode VideoEncoderOpenH264::EncodeOneFrame(const uint8_t *inputData, ui
         ERR("input size error: input size(%u) < frame size(%u)", inputSize, m_frameSize);
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
-
-    std::string isParamChange = GetStrEncParam( "persist.vmi.video.encode.param_adjusting");
-    if (isParamChange == "1") {
-        if (!GetPersistEncParam()) {
-            ERR("init encoder failed: GetEncParam failed");
-            return VIDEO_ENCODER_INIT_FAIL;
-        }
-        SetEncodeParams();
-        SetEncParam("persist.vmi.video.encode.param_adjusting", "0");
-    } else if (isParamChange != "0") {
-        WARN("Invalid property value[%s] for encode param adjusting", isParamChange.c_str());
-        SetEncParam("persist.vmi.video.encode.param_adjusting", "0");
+    
+    if (EncodeParamsCheck() != VIDEO_ENCODER_SUCCESS) {
+        ERR("init encoder failed: GetEncParam failed");
+        return VIDEO_ENCODER_INIT_FAIL;
     }
-
+    
     if (m_resetFlag) {
         if (ResetEncoder() != VIDEO_ENCODER_SUCCESS) {
             ERR("reset encoder failed while encoding");
@@ -411,19 +286,5 @@ EncoderRetCode VideoEncoderOpenH264::ForceKeyFrame()
         return VIDEO_ENCODER_FORCE_KEY_FRAME_FAIL;
     }
     INFO("force key frame success");
-    return VIDEO_ENCODER_SUCCESS;
-}
-
-EncoderRetCode VideoEncoderOpenH264::SetEncodeParams()
-{
-    if (EncodeParamsChange()) {
-        m_encParams = m_tmpEncParams;
-        m_resetFlag = true;
-        INFO("Handle encoder config change: [bitrate, gopsize, profile] = [%u,%u,%s]",
-            m_encParams.bitrate, m_encParams.gopsize, m_encParams.profile.c_str());
-    } else {
-        INFO("Using encoder config: [bitrate, gopsize, profile] = [%u,%u,%s]",
-            m_encParams.bitrate, m_encParams.gopsize, m_encParams.profile.c_str());
-    }
     return VIDEO_ENCODER_SUCCESS;
 }

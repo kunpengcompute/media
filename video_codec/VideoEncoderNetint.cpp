@@ -1,4 +1,5 @@
 /*
+ * 版权所有 (c) 华为技术有限公司 2021-2022
  * 功能说明: 适配NETINT硬件视频编码器，包括编码器初始化、启动、编码、停止、销毁等
  */
 
@@ -17,59 +18,60 @@ namespace {
     constexpr int U_INDEX = 1;
     constexpr int V_INDEX = 2;
     constexpr int BIT_DEPTH = 8;
-    constexpr int NUM_OF_PLANES = 3;
+    constexpr int NUM_OF_PLANES = 4;
     constexpr int COMPRESS_RATIO = 2;
 
-    const std::string NI_ENCODER_INIT_DEFAULT_PARAMS = "ni_encoder_init_default_params";
-    const std::string NI_ENCODER_PARAMS_SET_VALUE = "ni_encoder_params_set_value";
-    const std::string NI_RSRC_ALLOCATE_AUTO = "ni_rsrc_allocate_auto";
-    const std::string NI_RSRC_RELEASE_RESOURCE = "ni_rsrc_release_resource";
-    const std::string NI_RSRC_FREE_DEVICE_CONTEXT = "ni_rsrc_free_device_context";
-    const std::string NI_DEVICE_OPEN = "ni_device_open";
-    const std::string NI_DEVICE_CLOSE = "ni_device_close";
-    const std::string NI_DEVICE_SESSION_CONTEXT_INIT = "ni_device_session_context_init";
-    const std::string NI_DEVICE_SESSION_CONTEXT_FREE = "ni_device_session_context_free";
-    const std::string NI_DEVICE_SESSION_OPEN = "ni_device_session_open";
-    const std::string NI_DEVICE_SESSION_WRITE = "ni_device_session_write";
-    const std::string NI_DEVICE_SESSION_READ = "ni_device_session_read";
-    const std::string NI_DEVICE_SESSION_CLOSE = "ni_device_session_close";
-    const std::string NI_FRAME_BUFFER_ALLOC_V3 = "ni_frame_buffer_alloc_v3";
-    const std::string NI_FRAME_BUFFER_FREE = "ni_frame_buffer_free";
-    const std::string NI_PACKET_BUFFER_ALLOC = "ni_packet_buffer_alloc";
-    const std::string NI_PACKET_BUFFER_FREE = "ni_packet_buffer_free";
-    const std::string NI_GET_HW_YUV420P_DIM = "ni_get_hw_yuv420p_dim";
-    const std::string NI_COPY_HW_YUV420P = "ni_copy_hw_yuv420p";
+    const std::string NI_ENCODER_INIT_DEFAULT_PARAMS = "ni_logan_encoder_init_default_params";
+    const std::string NI_ENCODER_PARAMS_SET_VALUE = "ni_logan_encoder_params_set_value";
+    const std::string NI_RSRC_ALLOCATE_AUTO = "ni_logan_rsrc_allocate_auto";
+    const std::string NI_RSRC_RELEASE_RESOURCE = "ni_logan_rsrc_release_resource";
+    const std::string NI_RSRC_FREE_DEVICE_CONTEXT = "ni_logan_rsrc_free_device_context";
+    const std::string NI_DEVICE_OPEN = "ni_logan_device_open";
+    const std::string NI_DEVICE_CLOSE = "ni_logan_device_close";
+    const std::string NI_DEVICE_SESSION_CONTEXT_INIT = "ni_logan_device_session_context_init";
+    const std::string NI_DEVICE_SESSION_CONTEXT_FREE = "ni_logan_device_session_context_free";
+    const std::string NI_DEVICE_SESSION_OPEN = "ni_logan_device_session_open";
+    const std::string NI_DEVICE_SESSION_WRITE = "ni_logan_device_session_write";
+    const std::string NI_DEVICE_SESSION_READ = "ni_logan_device_session_read";
+    const std::string NI_DEVICE_SESSION_CLOSE = "ni_logan_device_session_close";
+    const std::string NI_FRAME_BUFFER_ALLOC_V4 = "ni_logan_frame_buffer_alloc_v4";
+    const std::string NI_FRAME_BUFFER_FREE = "ni_logan_frame_buffer_free";
+    const std::string NI_PACKET_BUFFER_ALLOC = "ni_logan_packet_buffer_alloc";
+    const std::string NI_PACKET_BUFFER_FREE = "ni_logan_packet_buffer_free";
+    const std::string NI_GET_HW_YUV420P_DIM = "ni_logan_get_hw_yuv420p_dim";
+    const std::string NI_COPY_HW_YUV420P = "ni_logan_copy_hw_yuv420p";
 
     using NiEncInitDefaultParamsFunc =
-        ni_retcode_t (*)(ni_encoder_params_t *param, int fpsNum, int fpsDenom, long bitRate, int width, int height);
+        ni_logan_retcode_t (*)(ni_logan_encoder_params_t *param, int fpsNum, int fpsDenom, long bitRate, int width, int height);
     using NiEncParamsSetValueFunc =
-        ni_retcode_t (*)(ni_encoder_params_t *params, const char *name, const char *value);
-    using NiRsrcAllocateAutoFunc = ni_device_context_t* (*)(ni_device_type_t devType, ni_alloc_rule_t rule,
-        ni_codec_t codec, int width, int height, int framerate, unsigned long *load);
-    using NiRsrcReleaseResourceFunc = void (*)(ni_device_context_t *devCtx, ni_codec_t codec, unsigned long load);
-    using NiRsrcFreeDeviceContextFunc = void (*)(ni_device_context_t *devCtx);
+        ni_logan_retcode_t (*)(ni_logan_encoder_params_t *params, const char *name, const char *value, ni_logan_session_context_t *ctx);
+    using NiRsrcAllocateAutoFunc = ni_logan_device_context_t* (*)(ni_logan_device_type_t devType, ni_alloc_rule_t rule,
+        ni_codec_t codec, int width, int height, int framerate, unsigned long *load);  
+    using NiRsrcReleaseResourceFunc = void (*)(ni_logan_device_context_t *devCtx, ni_codec_t codec, unsigned long load);
+    using NiRsrcFreeDeviceContextFunc = void (*)(ni_logan_device_context_t *devCtx);
     using NiDeviceOpenFunc = ni_device_handle_t (*)(const char *dev, uint32_t *maxIoSizeOut);
     using NiDeviceCloseFunc = void (*)(ni_device_handle_t devHandle);
-    using NiDeviceSessionContextInitFunc = void (*)(ni_session_context_t *sessionCtx);
-    using NiDeviceSessionContextFreeFunc = void (*)(ni_session_context_t *sessionCtx);
-    using NiDeviceSessionOpenFunc = ni_retcode_t (*)(ni_session_context_t *sessionCtx, ni_device_type_t devType);
+    using NiDeviceSessionContextInitFunc = void (*)(ni_logan_session_context_t *sessionCtx);
+    using NiDeviceSessionContextFreeFunc = void (*)(ni_logan_session_context_t *sessionCtx);
+    using NiDeviceSessionOpenFunc = ni_logan_retcode_t (*)(ni_logan_session_context_t *sessionCtx, ni_logan_device_type_t devType);
     using NiDeviceSessionWriteFunc =
-        int (*)(ni_session_context_t *sessionCtx, ni_session_data_io_t *sessionDataIo, ni_device_type_t devType);
+        int (*)(ni_logan_session_context_t *sessionCtx, ni_logan_session_data_io_t *sessionDataIo, ni_logan_device_type_t devType);
     using NiDeviceSessionReadFunc =
-        int (*)(ni_session_context_t *sessionCtx, ni_session_data_io_t *sessionDataIo, ni_device_type_t devType);
+        int (*)(ni_logan_session_context_t *sessionCtx, ni_logan_session_data_io_t *sessionDataIo, ni_logan_device_type_t devType);
     using NiDeviceSessionCloseFunc =
-        ni_retcode_t (*)(ni_session_context_t *sessionCtx, int eosRecieved, ni_device_type_t devType);
-    using NiFrameBufferAllocV3Func = ni_retcode_t (*)(ni_frame_t *frame, int videoWidth,
+        ni_logan_retcode_t (*)(ni_logan_session_context_t *sessionCtx, int eosRecieved, ni_logan_device_type_t devType);
+    using NiFrameBufferAllocV4Func = ni_logan_retcode_t (*)(ni_logan_frame_t *frame, int pixel_format, int videoWidth,
         int videoHeight, int lineSize[], int alignment, int extraLen);
-    using NiFrameBufferFreeFunc = ni_retcode_t (*)(ni_frame_t *frame);
-    using NiPacketBufferAllocFunc = ni_retcode_t (*)(ni_packet_t *packet, int packetSize);
-    using NiPacketBufferFreeFunc = ni_retcode_t (*)(ni_packet_t *packet);
+    using NiFrameBufferFreeFunc = ni_logan_retcode_t (*)(ni_logan_frame_t *frame);
+    using NiPacketBufferAllocFunc = ni_logan_retcode_t (*)(ni_logan_packet_t *packet, int packetSize);
+    using NiPacketBufferFreeFunc = ni_logan_retcode_t (*)(ni_logan_packet_t *packet);
     using NiGetHwYuv420pDimFunc = void (*)(int width, int height, int bitDepthFactor, int isH264,
-        int planeStride[NI_MAX_NUM_DATA_POINTERS], int planeHeight[NI_MAX_NUM_DATA_POINTERS]);
-    using NiCopyHwYuv420pFunc = void (*)(uint8_t *dstPtr[NI_MAX_NUM_DATA_POINTERS],
-        uint8_t *srcPtr[NI_MAX_NUM_DATA_POINTERS], int frameWidth, int frameHeight, int bitDepthFactor,
-        int dstStride[NI_MAX_NUM_DATA_POINTERS], int dstHeight[NI_MAX_NUM_DATA_POINTERS],
-        int srcStride[NI_MAX_NUM_DATA_POINTERS], int srcHeight[NI_MAX_NUM_DATA_POINTERS]);
+        int planeStride[NI_LOGAN_MAX_NUM_DATA_POINTERS], int planeHeight[NI_LOGAN_MAX_NUM_DATA_POINTERS]);
+    
+    using NiCopyHwYuv420pFunc = void (*)(uint8_t *dstPtr[NI_LOGAN_MAX_NUM_DATA_POINTERS],
+        uint8_t *srcPtr[NI_LOGAN_MAX_NUM_DATA_POINTERS], int frameWidth, int frameHeight, int bitDepthFactor,
+        int dstStride[NI_LOGAN_MAX_NUM_DATA_POINTERS], int dstHeight[NI_LOGAN_MAX_NUM_DATA_POINTERS],
+        int srcStride[NI_LOGAN_MAX_NUM_DATA_POINTERS], int srcHeight[NI_LOGAN_MAX_NUM_DATA_POINTERS]);
 
     std::unordered_map<std::string, void*> g_funcMap = {
         { NI_ENCODER_INIT_DEFAULT_PARAMS, nullptr },
@@ -86,7 +88,7 @@ namespace {
         { NI_DEVICE_SESSION_WRITE, nullptr },
         { NI_DEVICE_SESSION_READ, nullptr },
         { NI_DEVICE_SESSION_CLOSE, nullptr },
-        { NI_FRAME_BUFFER_ALLOC_V3, nullptr },
+        { NI_FRAME_BUFFER_ALLOC_V4, nullptr },
         { NI_FRAME_BUFFER_FREE, nullptr },
         { NI_PACKET_BUFFER_ALLOC, nullptr },
         { NI_PACKET_BUFFER_FREE, nullptr },
@@ -95,11 +97,14 @@ namespace {
     };
 
     std::unordered_map<std::string, std::string> g_transProfile = {
-        {"baseline", "66"},
-        {"main", "77"},
-        {"high", "100"}};
+        {"baseline", "1"},
+        {"main", "2"},
+        {"high", "4"}};    
 
-    const std::string SHARED_LIB_NAME = "libxcoder.so";
+    std::unordered_map<std::string, std::string> g_transProfile_h265 = {
+        {"main", "1"}};
+
+    const std::string SHARED_LIB_NAME = "libxcoder_logan.so";
     std::atomic<bool> g_netintLoaded = { false };
     void *g_libHandle = nullptr;
 }
@@ -122,75 +127,6 @@ VideoEncoderNetint::~VideoEncoderNetint()
     INFO("VideoEncoderNetint destructed");
 }
 
-bool VideoEncoderNetint::GetRoEncParam()
-{
-    int32_t width = 0;
-    int32_t height = 0;
-    int32_t framerate = 0;
-    std::string phoneMode = GetStrEncParam("ro.sys.vmi.cloudphone");
-    if (phoneMode == "video") {
-        width = GetIntEncParam("ro.hardware.width");
-        height = GetIntEncParam("ro.hardware.height");
-        framerate = GetIntEncParam("ro.hardware.fps");
-    } else if (phoneMode == "instruction") {
-        width = GetIntEncParam("persist.vmi.demo.video.encode.width");
-        height = GetIntEncParam("persist.vmi.demo.video.encode.height");
-        framerate = GetIntEncParam("persist.vmi.demo.video.encode.framerate");
-    } else {
-        ERR("Invalid property value[%s] for property[ro.sys.vmi.cloudphone], get property failed!", phoneMode.c_str());
-        return false;
-    }
-
-    if (!VerifyEncodeRoParams(width, height, framerate)) {
-        ERR("encoder params is not supported");
-        return false;
-    }
-
-    m_tmpEncParams.width = width;
-    m_tmpEncParams.height = height;
-    m_tmpEncParams.framerate = framerate;
-    return true;
-}
-
-bool VideoEncoderNetint::GetPersistEncParam()
-{
-    std::string bitrate = "";
-    std::string gopsize = "";
-    std::string profile = "";
-    std::string phoneMode = GetStrEncParam("ro.sys.vmi.cloudphone");
-    if (phoneMode == "video") {
-        bitrate = GetStrEncParam("persist.vmi.video.encode.bitrate");
-        gopsize = GetStrEncParam("persist.vmi.video.encode.gopsize");
-        profile = GetStrEncParam("persist.vmi.video.encode.profile");
-    } else if (phoneMode == "instruction") {
-        bitrate = GetStrEncParam("persist.vmi.demo.video.encode.bitrate");
-        gopsize = GetStrEncParam("persist.vmi.demo.video.encode.gopsize");
-        profile = GetStrEncParam("persist.vmi.demo.video.encode.profile");
-    } else {
-        ERR("Invalid property value[%s] for property[ro.sys.vmi.cloudphone], get property failed!", phoneMode.c_str());
-        return false;
-    }
-
-    if (!VerifyEncodeParams(bitrate, gopsize, profile)) {
-        SetEncParam("persist.vmi.video.encode.bitrate", std::to_string(m_encParams.bitrate).c_str());
-        SetEncParam("persist.vmi.video.encode.gopsize", std::to_string(m_encParams.gopsize).c_str());
-        SetEncParam("persist.vmi.video.encode.profile", m_encParams.profile.c_str());
-    } else {
-        m_tmpEncParams.bitrate = StrToInt(bitrate);
-        m_tmpEncParams.gopsize = StrToInt(gopsize);
-        m_tmpEncParams.profile = profile;
-    }
-
-    return true;
-}
-
-bool VideoEncoderNetint::EncodeParamsChange()
-{
-    return (m_tmpEncParams.bitrate != m_encParams.bitrate) || (m_tmpEncParams.gopsize != m_encParams.gopsize)
-        || (m_tmpEncParams.profile != m_encParams.profile) || (m_tmpEncParams.width != m_encParams.width)
-        || (m_tmpEncParams.height != m_encParams.height) || (m_tmpEncParams.framerate != m_encParams.framerate);
-}
-
 EncoderRetCode VideoEncoderNetint::InitEncoder()
 {
     if ((!GetRoEncParam()) || (!GetPersistEncParam())) {
@@ -205,15 +141,15 @@ EncoderRetCode VideoEncoderNetint::InitEncoder()
     m_width = static_cast<int>(m_encParams.width);
     m_height = static_cast<int>(m_encParams.height);
     const int align = (m_codec == EN_H264) ? 16 : 8;  // h.264: 16-aligned, h.265: 8-aligned
-    m_widthAlign = std::max(((m_width + align - 1) / align) * align, NI_MIN_WIDTH);
-    m_heightAlign = std::max(((m_height + align - 1) / align) * align, NI_MIN_HEIGHT);
+    m_widthAlign = std::max(((m_width + align - 1) / align) * align, NI_LOGAN_MIN_WIDTH);
+    m_heightAlign = std::max(((m_height + align - 1) / align) * align, NI_LOGAN_MIN_HEIGHT);
     if (!InitCodec()) {
         ERR("init encoder failed: init codec error");
         return VIDEO_ENCODER_INIT_FAIL;
     }
     auto deviceSessionOpen = reinterpret_cast<NiDeviceSessionOpenFunc>(g_funcMap[NI_DEVICE_SESSION_OPEN]);
-    ni_retcode_t ret = (*deviceSessionOpen)(&m_sessionCtx, NI_DEVICE_TYPE_ENCODER);
-    if (ret != NI_RETCODE_SUCCESS) {
+    ni_logan_retcode_t ret = (*deviceSessionOpen)(&m_sessionCtx, NI_LOGAN_DEVICE_TYPE_ENCODER);
+    if (ret != NI_LOGAN_RETCODE_SUCCESS) {
         ERR("init encoder failed: device session open error %d", ret);
         return VIDEO_ENCODER_INIT_FAIL;
     }
@@ -221,45 +157,6 @@ EncoderRetCode VideoEncoderNetint::InitEncoder()
     m_isInited = true;
     INFO("init encoder success");
     return VIDEO_ENCODER_SUCCESS;
-}
-
-bool VideoEncoderNetint::VerifyEncodeRoParams(int32_t width, int32_t height, int32_t framerate)
-{
-    bool isEncodeParamsTrue = true;
-    if (width > NI_PARAM_MAX_WIDTH || height > NI_PARAM_MAX_HEIGHT ||
-        width < NI_PARAM_MIN_WIDTH || height < NI_PARAM_MIN_HEIGHT) {
-        ERR("Invalid property value[%dx%d] for property[width,height], get property failed!", width, height);
-        isEncodeParamsTrue = false;
-    }
-    if (framerate != FRAMERATE_MIN && framerate != FRAMERATE_MAX) {
-        ERR("Invalid property value[%d] for property[framerate], get property failed!", framerate);
-        isEncodeParamsTrue = false;
-    }
-    return isEncodeParamsTrue;
-}
-
-bool VideoEncoderNetint::VerifyEncodeParams(std::string &bitrate, std::string &gopsize, std::string &profile)
-{
-    bool isEncodeParamsTrue = true;
-    if ((StrToInt(bitrate) < (int32_t)BITRATE_MIN) || (StrToInt(bitrate) > (int32_t)BITRATE_MAX)) {
-        WARN("Invalid property value[%s] for property[bitrate], use last correct encode bitrate[%u]",
-            bitrate.c_str(), m_encParams.bitrate);
-        isEncodeParamsTrue = false;
-    }
-    if ((StrToInt(gopsize) < (int32_t)GOPSIZE_MIN) || (StrToInt(gopsize) > (int32_t)GOPSIZE_MAX)) {
-        WARN("Invalid property value[%s] for property[gopsize], use last correct encode gopsize[%u]",
-            gopsize.c_str(), m_encParams.gopsize);
-        isEncodeParamsTrue = false;
-    }
-    if (profile != ENCODE_PROFILE_BASELINE &&
-        profile != ENCODE_PROFILE_MAIN &&
-        profile != ENCODE_PROFILE_HIGH) {
-        WARN("Invalid property value[%s] for property[profile], use last correct encode profile[%s]",
-            profile.c_str(), m_encParams.profile.c_str());
-        isEncodeParamsTrue = false;
-    }
-
-    return isEncodeParamsTrue;
 }
 
 bool VideoEncoderNetint::LoadNetintSharedLib()
@@ -295,10 +192,10 @@ bool VideoEncoderNetint::InitCodec()
     auto deviceSessionContextInit =
         reinterpret_cast<NiDeviceSessionContextInitFunc>(g_funcMap[NI_DEVICE_SESSION_CONTEXT_INIT]);
     (*deviceSessionContextInit)(&m_sessionCtx);
-    m_sessionCtx.session_id = NI_INVALID_SESSION_ID;
-    m_sessionCtx.codec_format = (m_codec == EN_H264) ? NI_CODEC_FORMAT_H264 : NI_CODEC_FORMAT_H265;
+    m_sessionCtx.session_id = NI_LOGAN_INVALID_SESSION_ID;
+    m_sessionCtx.codec_format = (m_codec == EN_H264) ? NI_LOGAN_CODEC_FORMAT_H264 : NI_LOGAN_CODEC_FORMAT_H265;
     auto rsrcAllocateAuto = reinterpret_cast<NiRsrcAllocateAutoFunc>(g_funcMap[NI_RSRC_ALLOCATE_AUTO]);
-    m_devCtx = (*rsrcAllocateAuto)(NI_DEVICE_TYPE_ENCODER, EN_ALLOC_LEAST_LOAD, m_codec,
+    m_devCtx = (*rsrcAllocateAuto)(NI_LOGAN_DEVICE_TYPE_ENCODER, EN_ALLOC_LEAST_LOAD, m_codec,
         m_encParams.width, m_encParams.height, m_encParams.framerate, &m_load);
     if (m_devCtx == nullptr) {
         ERR("rsrc allocate auto failed");
@@ -310,7 +207,7 @@ bool VideoEncoderNetint::InitCodec()
     ni_device_handle_t devHandle = (*deviceOpen)(xcoderId.c_str(), &m_sessionCtx.max_nvme_io_size);
     ni_device_handle_t blkHandle = (*deviceOpen)(xcoderId.c_str(), &m_sessionCtx.max_nvme_io_size);
     if ((devHandle == NI_INVALID_DEVICE_HANDLE) || (blkHandle == NI_INVALID_DEVICE_HANDLE)) {
-        ERR("device open falied");
+        ERR("device open failed");
         return false;
     }
     m_sessionCtx.device_handle = devHandle;
@@ -326,9 +223,9 @@ bool VideoEncoderNetint::InitCodec()
 bool VideoEncoderNetint::InitCtxParams()
 {
     auto encInitDefaultParams = reinterpret_cast<NiEncInitDefaultParamsFunc>(g_funcMap[NI_ENCODER_INIT_DEFAULT_PARAMS]);
-    ni_retcode_t ret = (*encInitDefaultParams)(
+    ni_logan_retcode_t ret = (*encInitDefaultParams)(
         &m_niEncParams, m_encParams.framerate, 1, m_encParams.bitrate, m_encParams.width, m_encParams.height);
-    if (ret != NI_RETCODE_SUCCESS) {
+    if (ret != NI_LOGAN_RETCODE_SUCCESS) {
         ERR("encoder init default params error %d", ret);
         return false;
     }
@@ -339,18 +236,24 @@ bool VideoEncoderNetint::InitCtxParams()
     const std::string lowDelayPocTypeOpt = "useLowDelayPocType";
     const std::string noBframeOption = "2";
     const std::string enableOption = "1";
+    std::string profileValue = "";
+    if (m_codec == EN_H264) {
+        profileValue = g_transProfile[m_encParams.profile];
+    } else if (m_codec == EN_H265) {
+        profileValue = g_transProfile_h265[m_encParams.profile];
+    }
 
     std::unordered_map<std::string, std::string> xcoderParams = {
         { gopPresetOpt, noBframeOption },   // GOP: IPPP...
         { lowDelayOpt, enableOption },      // enable low delay mode
         { rateControlOpt, enableOption },   // rate control enable
-        { profileOpt, m_encParams.profile },     // profile: Baseline(h.264), Main(h.265)
+        { profileOpt, profileValue },     // profile: High(h.264), Main(h.265)
         { lowDelayPocTypeOpt, enableOption} // enable lowDelayPoc
     };
     auto encParamsSetValue = reinterpret_cast<NiEncParamsSetValueFunc>(g_funcMap[NI_ENCODER_PARAMS_SET_VALUE]);
     for (const auto &xParam : xcoderParams) {
-        ret = (*encParamsSetValue)(&m_niEncParams, xParam.first.c_str(), xParam.second.c_str());
-        if (ret != NI_RETCODE_SUCCESS) {
+        ret = (*encParamsSetValue)(&m_niEncParams, xParam.first.c_str(), xParam.second.c_str(), &m_sessionCtx);
+        if (ret != NI_LOGAN_RETCODE_SUCCESS) {
             ERR("encoder params set value error %d: name %s : value %s",
                 ret, xParam.first.c_str(), xParam.second.c_str());
             return false;
@@ -381,23 +284,15 @@ EncoderRetCode VideoEncoderNetint::StartEncoder()
 EncoderRetCode VideoEncoderNetint::EncodeOneFrame(const uint8_t *inputData, uint32_t inputSize,
     uint8_t **outputData, uint32_t *outputSize)
 {
-    uint32_t frameSize = static_cast<uint32_t>(m_width * m_height * NUM_OF_PLANES / COMPRESS_RATIO);
+    uint32_t frameSize = static_cast<uint32_t>(m_width * m_height * 3 / COMPRESS_RATIO);    //用于字节对齐
     if (inputSize < frameSize) {
         ERR("input size error: size(%u) < frame size(%u)", inputSize, frameSize);
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
 
-    std::string isParamChange = GetStrEncParam( "persist.vmi.video.encode.param_adjusting");
-    if (isParamChange == "1") {
-        if ((!GetRoEncParam()) || (!GetPersistEncParam())) {
-            ERR("init encoder failed: GetEncParam failed");
-            return VIDEO_ENCODER_INIT_FAIL;
-        }
-        SetEncodeParams();
-        SetEncParam("persist.vmi.video.encode.param_adjusting", "0");
-    } else if (isParamChange != "0") {
-        WARN("Invalid property value[%s] for encode param adjusting", isParamChange.c_str());
-        SetEncParam("persist.vmi.video.encode.param_adjusting", "0");
+    if (EncodeParamsCheck() != VIDEO_ENCODER_SUCCESS) {
+        ERR("init encoder failed: GetEncParam failed");
+        return VIDEO_ENCODER_INIT_FAIL;
     }
 
     if (m_resetFlag) {
@@ -428,29 +323,29 @@ EncoderRetCode VideoEncoderNetint::EncodeOneFrame(const uint8_t *inputData, uint
     uint32_t sentCnt = 0;
     constexpr int maxSentTimes = 3;
     while (oneSent == 0 && sentCnt < maxSentTimes) {
-        oneSent = (*deviceSessionWrite)(&m_sessionCtx, &m_frame, NI_DEVICE_TYPE_ENCODER);
+        oneSent = (*deviceSessionWrite)(&m_sessionCtx, &m_frame, NI_LOGAN_DEVICE_TYPE_ENCODER);
         ++sentCnt;
     }
     if (oneSent < 0 || sentCnt == maxSentTimes) {
         ERR("device session write error, return sent size = %d", oneSent);
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
-    ni_frame_t dataFrame = m_frame.data.frame;
+    ni_logan_frame_t dataFrame = m_frame.data.frame;
     uint32_t sentBytes = dataFrame.data_len[Y_INDEX] + dataFrame.data_len[U_INDEX] + dataFrame.data_len[V_INDEX];
     DBG("encoder send data success, total sent data size = %u", sentBytes);
 
     DBG("===> encoder receive data begin <===");
-    ni_packet_t *dataPacket = &(m_packet.data.packet);
+    ni_logan_packet_t *dataPacket = &(m_packet.data.packet);
     auto packetBufferAlloc = reinterpret_cast<NiPacketBufferAllocFunc>(g_funcMap[NI_PACKET_BUFFER_ALLOC]);
-    ni_retcode_t ret = (*packetBufferAlloc)(dataPacket, frameSize);
-    if (ret != NI_RETCODE_SUCCESS) {
+    ni_logan_retcode_t ret = (*packetBufferAlloc)(dataPacket, frameSize);
+    if (ret != NI_LOGAN_RETCODE_SUCCESS) {
         ERR("packet buffer alloc error %d", ret);
         return VIDEO_ENCODER_ENCODE_FAIL;
     }
     auto deviceSessionRead = reinterpret_cast<NiDeviceSessionReadFunc>(g_funcMap[NI_DEVICE_SESSION_READ]);
-    int oneRead = (*deviceSessionRead)(&m_sessionCtx, &m_packet, NI_DEVICE_TYPE_ENCODER);
+    int oneRead = (*deviceSessionRead)(&m_sessionCtx, &m_packet, NI_LOGAN_DEVICE_TYPE_ENCODER);
     DBG("encoder receive data: total received data size = %d", oneRead);
-    const int metaDataSize = NI_FW_ENC_BITSTREAM_META_DATA_SIZE;
+    const int metaDataSize = NI_LOGAN_FW_ENC_BITSTREAM_META_DATA_SIZE;
     if (oneRead > metaDataSize) {
         if (m_sessionCtx.pkt_num == 0) {
             m_sessionCtx.pkt_num = 1;
@@ -472,29 +367,35 @@ bool VideoEncoderNetint::InitFrameData(const uint8_t *src)
         ERR("input data buffer is null");
         return false;
     }
-    ni_frame_t *dataFrame = &(m_frame.data.frame);
+    ni_logan_frame_t *dataFrame = &(m_frame.data.frame);
     dataFrame->start_of_stream = 0;
     dataFrame->end_of_stream = 0;
     dataFrame->force_key_frame = 0;
     dataFrame->video_width = m_width;
     dataFrame->video_height = m_height;
-    dataFrame->extra_data_len = NI_APP_ENC_FRAME_META_DATA_SIZE;
+    dataFrame->extra_data_len = NI_LOGAN_APP_ENC_FRAME_META_DATA_SIZE;
 
     int dstPlaneStride[NUM_OF_PLANES] = {0};
     int dstPlaneHeight[NUM_OF_PLANES] = {0};
+    int srcPlaneStride[NUM_OF_PLANES] = {0};
+    int srcPlaneHeight[NUM_OF_PLANES] = {0};
     auto getHwYuv420pDim = reinterpret_cast<NiGetHwYuv420pDimFunc>(g_funcMap[NI_GET_HW_YUV420P_DIM]);
     (*getHwYuv420pDim)(m_width, m_height, m_sessionCtx.bit_depth_factor,
-        m_sessionCtx.codec_format == NI_CODEC_FORMAT_H264, dstPlaneStride, dstPlaneHeight);
+        m_sessionCtx.codec_format == NI_LOGAN_CODEC_FORMAT_H264, dstPlaneStride, dstPlaneHeight);
 
-    auto frameBufferAllocV3 = reinterpret_cast<NiFrameBufferAllocV3Func>(g_funcMap[NI_FRAME_BUFFER_ALLOC_V3]);
-    ni_retcode_t ret = (*frameBufferAllocV3)(dataFrame, m_width, m_height, dstPlaneStride,
-        m_sessionCtx.codec_format == NI_CODEC_FORMAT_H264, dataFrame->extra_data_len);
-    if (ret != NI_RETCODE_SUCCESS || !dataFrame->p_data[Y_INDEX]) {
+    auto frameBufferAllocV4 = reinterpret_cast<NiFrameBufferAllocV4Func>(g_funcMap[NI_FRAME_BUFFER_ALLOC_V4]);
+    ni_logan_retcode_t ret = (*frameBufferAllocV4)(dataFrame, NI_LOGAN_PIX_FMT_YUV420P, m_width, m_height, dstPlaneStride,
+        m_sessionCtx.codec_format == NI_LOGAN_CODEC_FORMAT_H264, dataFrame->extra_data_len);
+    if (ret != NI_LOGAN_RETCODE_SUCCESS || !dataFrame->p_data[Y_INDEX]) {
         ERR("frame buffer alloc failed: ret = %d", ret);
         return false;
     }
-    int srcPlaneStride[NUM_OF_PLANES] = { m_width, m_width / COMPRESS_RATIO, m_width / COMPRESS_RATIO };
-    int srcPlaneHeight[NUM_OF_PLANES] = { m_height, m_height / COMPRESS_RATIO, m_height / COMPRESS_RATIO };
+    srcPlaneStride[Y_INDEX] = m_width * m_sessionCtx.bit_depth_factor;
+    srcPlaneStride[U_INDEX] = m_width / COMPRESS_RATIO;
+    srcPlaneStride[V_INDEX] = m_width / COMPRESS_RATIO;
+    srcPlaneHeight[Y_INDEX] = m_height;
+    srcPlaneHeight[U_INDEX] = m_height / COMPRESS_RATIO;
+    srcPlaneHeight[V_INDEX] = m_height / COMPRESS_RATIO;
     uint8_t *srcPlanes[NUM_OF_PLANES];
     srcPlanes[Y_INDEX] = const_cast<uint8_t*>(src);
     srcPlanes[U_INDEX] = srcPlanes[Y_INDEX] + srcPlaneStride[Y_INDEX] * srcPlaneHeight[Y_INDEX];
@@ -534,11 +435,11 @@ void VideoEncoderNetint::DestroyEncoder()
         return;
     }
     CheckFuncPtr();
-    ni_retcode_t ret;
+    ni_logan_retcode_t ret;
     if (g_funcMap[NI_DEVICE_SESSION_CLOSE] != nullptr) {
         auto deviceSessionClose = reinterpret_cast<NiDeviceSessionCloseFunc>(g_funcMap[NI_DEVICE_SESSION_CLOSE]);
-        ret = (*deviceSessionClose)(&m_sessionCtx, 1, NI_DEVICE_TYPE_ENCODER);
-        if (ret != NI_RETCODE_SUCCESS) {
+        ret = (*deviceSessionClose)(&m_sessionCtx, 1, NI_LOGAN_DEVICE_TYPE_ENCODER);
+        if (ret != NI_LOGAN_RETCODE_SUCCESS) {
             WARN("device session close failed: ret = %d", ret);
         }
     }
@@ -569,14 +470,14 @@ void VideoEncoderNetint::DestroyEncoder()
     if (g_funcMap[NI_FRAME_BUFFER_FREE] != nullptr) {
         auto frameBufferFree = reinterpret_cast<NiFrameBufferFreeFunc>(g_funcMap[NI_FRAME_BUFFER_FREE]);
         ret = (*frameBufferFree)(&(m_frame.data.frame));
-        if (ret != NI_RETCODE_SUCCESS) {
+        if (ret != NI_LOGAN_RETCODE_SUCCESS) {
             WARN("device session close failed: ret = %d", ret);
         }
     }
     if (g_funcMap[NI_PACKET_BUFFER_FREE] != nullptr) {
         auto packetBufferFree = reinterpret_cast<NiPacketBufferFreeFunc>(g_funcMap[NI_PACKET_BUFFER_FREE]);
         ret = (*packetBufferFree)(&(m_packet.data.packet));
-        if (ret != NI_RETCODE_SUCCESS) {
+        if (ret != NI_LOGAN_RETCODE_SUCCESS) {
             WARN("device session close failed: ret = %d", ret);
         }
     }
@@ -620,19 +521,5 @@ EncoderRetCode VideoEncoderNetint::ResetEncoder()
 EncoderRetCode VideoEncoderNetint::ForceKeyFrame()
 {
     INFO("force key frame success");
-    return VIDEO_ENCODER_SUCCESS;
-}
-
-EncoderRetCode VideoEncoderNetint::SetEncodeParams()
-{
-    if (EncodeParamsChange()) {
-        m_encParams = m_tmpEncParams;
-        m_resetFlag = true;
-        INFO("Handle encoder config change: [bitrate, gopsize, profile] = [%u,%u,%s]",
-            m_encParams.bitrate, m_encParams.gopsize, m_encParams.profile.c_str());
-    } else {
-        INFO("Using encoder config: [bitrate, gopsize, profile] = [%u,%u,%s]",
-            m_encParams.bitrate, m_encParams.gopsize, m_encParams.profile.c_str());
-    }
     return VIDEO_ENCODER_SUCCESS;
 }

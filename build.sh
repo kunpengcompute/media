@@ -1,5 +1,6 @@
 #!/bin/bash
 # libVideoCodec的构建脚本
+# 版权所有 (c) 华为技术有限公司 2021-2022
 
 cur_file_path=$(cd $(dirname "${0}");pwd)
 
@@ -13,11 +14,11 @@ info()
 }
 
 link_dirs=(
-    media
+    Media
 )
 
 source_dirs="
-    media
+    Media
 "
 
 so_list=(

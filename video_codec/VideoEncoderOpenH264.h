@@ -1,4 +1,5 @@
 /*
+ * 版权所有 (c) 华为技术有限公司 2021-2021
  * 功能说明: 适配OpenH264软件视频编码器，包括编码器初始化、启动、编码、停止、销毁等
  */
 #ifndef VIDEO_ENCODER_OPEN_H264_H
@@ -7,24 +8,10 @@
 #include <string>
 #include <atomic>
 #include "VideoCodecApi.h"
+#include "VideoEncoderCommon.h"
 #include "codec_api.h"
 
-namespace OpenH264 {
-    constexpr uint32_t DEFAULT_WIDTH = 720;
-    constexpr uint32_t DEFAULT_HEIGHT = 1280;
-    constexpr uint32_t FRAMERATE_MIN = 30;
-    constexpr uint32_t FRAMERATE_MAX = 60;
-    constexpr uint32_t GOPSIZE_MIN = 30;
-    constexpr uint32_t GOPSIZE_MAX = 3000;
-    constexpr uint32_t BITRATE_MIN = 1000000;
-    constexpr uint32_t BITRATE_MAX = 10000000;
-    constexpr uint32_t BITRATE_DEFAULT_264 = 5000000;
-    const std::string ENCODE_PROFILE_BASELINE = "baseline";
-    const std::string ENCODE_PROFILE_MAIN = "main";
-    const std::string ENCODE_PROFILE_HIGH = "high";
-}
-
-class VideoEncoderOpenH264 : public VideoEncoder {
+class VideoEncoderOpenH264 : public VideoEncoder, public VideoEncoderCommon{
 public:
     /**
      * @功能描述: 构造函数
@@ -88,19 +75,6 @@ public:
      */
     EncoderRetCode ForceKeyFrame();
 
-    /**
-     * @功能描述: 设置编码参数
-     * @参数 [in] encParams: 编码参数结构体
-     * @返回值: VIDEO_ENCODER_SUCCESS 成功
-     *          VIDEO_ENCODER_SET_ENCODE_PARAMS_FAIL 设置编码参数失败
-     */
-    EncoderRetCode SetEncodeParams();
-
-    /**
-     * @功能描述: 判断编码参数是否改变
-     */
-    bool EncodeParamsChange();
-
 private:
     // 编码参数
     struct EncodeParams {
@@ -117,36 +91,6 @@ private:
                 (profile == rhs.profile) && (width == rhs.width) && (height == rhs.height);
         }
     };
-
-    /**
-     * @功能描述: 获取ro编码参数
-     * @返回值: true 成功
-     *          false 失败
-     */
-    bool GetRoEncParam();
-
-    /**
-     * @功能描述: 获取Persist编码参数
-     * @返回值: true 成功
-     *          false 失败
-     */
-    bool GetPersistEncParam();
-
-    /**
-     * @功能描述: 校验编码参数合法性
-     * @参数 [in] width 屏幕宽,height 屏幕高,framerate 帧率
-     * @返回值: true 成功
-     *          false 失败
-     */
-    bool VerifyEncodeRoParams(int32_t width, int32_t height, int32_t framerate);
-
-    /**
-     * @功能描述: 校验编码参数合法性
-     * @参数 [in] bitrate 码率,gopsize gop间隔,profile 配置
-     * @返回值: true 成功
-     *          false 失败
-     */
-    bool VerifyEncodeParams(std::string &bitrate, std::string &gopsize, std::string &profile);
 
     /**
      * @功能描述: 初始化编码器参数
@@ -178,19 +122,6 @@ private:
      */
     bool LoadOpenH264SharedLib();
 
-    EncodeParams m_encParams = {static_cast<uint32_t>(OpenH264::FRAMERATE_MIN),
-        static_cast<uint32_t>(OpenH264::BITRATE_DEFAULT_264),
-        static_cast<uint32_t>(OpenH264::GOPSIZE_MIN),
-        OpenH264::ENCODE_PROFILE_BASELINE,
-        static_cast<uint32_t>(OpenH264::DEFAULT_WIDTH),
-        static_cast<uint32_t>(OpenH264::DEFAULT_HEIGHT)};
-    EncodeParams m_tmpEncParams =  {static_cast<uint32_t>(OpenH264::FRAMERATE_MIN),
-        static_cast<uint32_t>(OpenH264::BITRATE_DEFAULT_264),
-        static_cast<uint32_t>(OpenH264::GOPSIZE_MIN),
-        OpenH264::ENCODE_PROFILE_BASELINE,
-        static_cast<uint32_t>(OpenH264::DEFAULT_WIDTH),
-        static_cast<uint32_t>(OpenH264::DEFAULT_HEIGHT)};
-    std::atomic<bool> m_resetFlag = { false };
     ISVCEncoder *m_encoder = nullptr;
     SEncParamExt m_paramExt = {};
     SSourcePicture m_srcPic = {};
